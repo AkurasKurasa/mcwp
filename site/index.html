@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MCWP — Material Cost &amp; Waste Prediction</title>
+<meta name="description" content="Predicts construction material waste per line, simulates the finished cost, and sizes the contingency that holds overrun risk at target.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ─────────────────────────────────────────────────────────────
+   Greenbar. Continuous-form ledger stock, the paper cost reports
+   were printed on before they lived in spreadsheets.
+   Dark mode is that paper's sibling: a green phosphor terminal.
+   ───────────────────────────────────────────────────────────── */
+:root{
+  --paper:#E7EEE1; --band:#DAE5D2; --ink:#16211A; --ink-2:#4A5B50;
+  --rule:#A3B59B; --rule-2:#C2D0B9; --risk:#B8371F; --safe:#2C6A4A;
+  --feed:#CBD8C2;
+  --f-display:"Archivo",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --gut:clamp(1.1rem,4vw,2.75rem);
+  --max:74rem;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --paper:#0A120D; --band:#111E15; --ink:#B7E8C6; --ink-2:#6E9A7C;
+    --rule:#24382B; --rule-2:#1A2A20; --risk:#FF7355; --safe:#4FD98A;
+    --feed:#152219;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:var(--f-body); font-size:16px; line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+/* tractor-feed margin, wide viewports only */
+@media (min-width:1180px){
+  body{
+    background-image:
+      radial-gradient(circle at 13px 50%, var(--feed) 3.5px, transparent 4px),
+      radial-gradient(circle at calc(100% - 13px) 50%, var(--feed) 3.5px, transparent 4px);
+    background-size:100% 26px; background-repeat:repeat-y;
+  }
+}
+.wrap{max-width:var(--max); margin:0 auto; padding:0 var(--gut)}
+a{color:inherit}
+h1,h2,h3{font-family:var(--f-display); font-weight:800; letter-spacing:-.02em; margin:0}
+.mono{font-family:var(--f-mono); font-variant-numeric:tabular-nums}
+:focus-visible{outline:2px solid var(--risk); outline-offset:3px}
+
+/* ── masthead ─────────────────────────────────────────────── */
+.head{border-bottom:2px solid var(--ink)}
+.head .wrap{display:flex; flex-wrap:wrap; gap:.5rem 1.5rem; align-items:baseline; padding-block:.85rem}
+.mark{font-family:var(--f-display); font-weight:800; font-size:1.3rem; letter-spacing:.04em}
+.head .sub{font-family:var(--f-mono); font-size:.72rem; text-transform:uppercase;
+  letter-spacing:.13em; color:var(--ink-2)}
+.head .spacer{margin-left:auto}
+.head a.repo{font-family:var(--f-mono); font-size:.75rem; text-decoration:none;
+  border-bottom:1px solid var(--rule); padding-bottom:1px}
+.head a.repo:hover{border-color:var(--ink)}
+
+/* ── hero ─────────────────────────────────────────────────── */
+.hero{padding-block:clamp(2.2rem,6vw,4rem) 1.5rem}
+.thesis{font-size:clamp(2rem,6.2vw,4rem); line-height:1.02; max-width:16ch}
+.thesis em{font-style:normal; color:var(--risk)}
+.lede{margin:1.15rem 0 0; max-width:58ch; color:var(--ink-2); font-size:1.02rem}
+
+/* ── project switcher ─────────────────────────────────────── */
+.tabs{display:flex; flex-wrap:wrap; gap:0; margin-top:2.25rem;
+  border-top:1px solid var(--rule); border-bottom:1px solid var(--rule)}
+.tab{appearance:none; background:none; border:0; cursor:pointer;
+  font-family:var(--f-mono); font-size:.76rem; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--ink-2); padding:.7rem 1rem .6rem 0;
+  margin-right:1.35rem; border-bottom:2px solid transparent; margin-bottom:-1px}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected="true"]{color:var(--ink); border-bottom-color:var(--risk); font-weight:600}
+
+/* ── figure row ───────────────────────────────────────────── */
+.figs{display:grid; grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr));
+  border-bottom:1px solid var(--rule)}
+.fig{padding:1.15rem 1rem 1.1rem 0}
+.fig + .fig{border-left:1px solid var(--rule-2); padding-left:1.15rem}
+.fig .k{font-family:var(--f-mono); font-size:.68rem; text-transform:uppercase;
+  letter-spacing:.11em; color:var(--ink-2); display:block; margin-bottom:.4rem}
+.fig .v{font-family:var(--f-mono); font-weight:600; font-size:clamp(1.3rem,3.2vw,1.85rem);
+  letter-spacing:-.02em; display:block; line-height:1.1}
+.fig .n{font-family:var(--f-mono); font-size:.7rem; color:var(--ink-2); display:block; margin-top:.3rem}
+.v.risk{color:var(--risk)} .v.safe{color:var(--safe)}
+
+/* ── the chart: signature element ─────────────────────────── */
+.chartwrap{padding:1.9rem 0 .5rem}
+.chart-hd{display:flex; flex-wrap:wrap; gap:.6rem 1rem; align-items:baseline; margin-bottom:1.1rem}
+.chart-hd h2{font-size:1.05rem; letter-spacing:-.01em}
+.chart-hd .note{font-family:var(--f-mono); font-size:.72rem; color:var(--ink-2)}
+.verdict{font-family:var(--f-mono); font-size:.7rem; text-transform:uppercase;
+  letter-spacing:.1em; padding:.22rem .55rem; border:1px solid currentColor; margin-left:auto}
+svg{display:block; width:100%; height:auto; overflow:visible}
+.legend{display:flex; flex-wrap:wrap; gap:1.4rem; margin-top:1rem;
+  font-family:var(--f-mono); font-size:.72rem; color:var(--ink-2)}
+.legend i{display:inline-block; width:1.5rem; height:.55rem; margin-right:.45rem;
+  vertical-align:middle; border:0}
+
+/* ── sections ─────────────────────────────────────────────── */
+section{padding-block:clamp(2.4rem,6vw,4rem)}
+section + section{border-top:1px solid var(--rule)}
+.eyebrow{font-family:var(--f-mono); font-size:.7rem; text-transform:uppercase;
+  letter-spacing:.14em; color:var(--ink-2); margin:0 0 .55rem}
+.h2{font-size:clamp(1.5rem,3.6vw,2.15rem); line-height:1.12; margin-bottom:.7rem}
+.intro{max-width:56ch; color:var(--ink-2); margin:0 0 1.9rem}
+
+/* ── ledger table ─────────────────────────────────────────── */
+.ledger{width:100%; border-collapse:collapse; font-family:var(--f-mono); font-size:.82rem}
+.ledger caption{text-align:left; font-family:var(--f-mono); font-size:.72rem;
+  color:var(--ink-2); padding-bottom:.6rem}
+.ledger th{text-align:right; font-weight:500; font-size:.68rem; text-transform:uppercase;
+  letter-spacing:.09em; color:var(--ink-2); padding:.5rem .7rem; border-bottom:1.5px solid var(--ink)}
+.ledger th:first-child,.ledger td:first-child{text-align:left; padding-left:0}
+.ledger td{text-align:right; padding:.55rem .7rem; border-bottom:1px solid var(--rule-2);
+  font-variant-numeric:tabular-nums}
+.ledger tbody tr:nth-child(odd){background:var(--band)}
+.ledger td:last-child,.ledger th:last-child{padding-right:0}
+.scroller{overflow-x:auto; margin-inline:calc(var(--gut) * -1); padding-inline:var(--gut)}
+.band{color:var(--ink-2); font-size:.76rem}
+
+/* ── risk bars ────────────────────────────────────────────── */
+.risks{list-style:none; margin:0; padding:0}
+.risks li{padding:.75rem 0; border-bottom:1px solid var(--rule-2);
+  display:grid; grid-template-columns:1fr auto; gap:.15rem .9rem; align-items:baseline}
+.risks .nm{font-weight:500}
+.risks .pc{font-family:var(--f-mono); font-size:.85rem; font-variant-numeric:tabular-nums}
+.risks .bar{grid-column:1/-1; height:.5rem; background:var(--rule-2); margin-top:.35rem}
+.risks .bar span{display:block; height:100%; background:var(--risk)}
+.risks .meta{grid-column:1/-1; font-family:var(--f-mono); font-size:.71rem; color:var(--ink-2)}
+
+/* ── metric grid ──────────────────────────────────────────── */
+.metrics{display:grid; grid-template-columns:repeat(auto-fit,minmax(11rem,1fr)); gap:0 1.5rem}
+.metric{padding:1rem 0; border-bottom:1px solid var(--rule-2)}
+.metric .k{font-family:var(--f-mono); font-size:.69rem; text-transform:uppercase;
+  letter-spacing:.1em; color:var(--ink-2); display:block}
+.metric .v{font-family:var(--f-mono); font-weight:600; font-size:1.45rem; display:block; margin-top:.3rem}
+.metric .n{font-size:.78rem; color:var(--ink-2); display:block; margin-top:.2rem}
+
+/* ── code ─────────────────────────────────────────────────── */
+pre{font-family:var(--f-mono); font-size:.82rem; line-height:1.7; margin:0;
+  padding:1.1rem 1.2rem; background:var(--band); border-left:2px solid var(--ink);
+  overflow-x:auto}
+pre .c{color:var(--ink-2)}
+
+/* ── callout ──────────────────────────────────────────────── */
+.callout{border:1px solid var(--rule); border-left:3px solid var(--risk);
+  padding:1.15rem 1.3rem; margin-top:2rem; max-width:62ch}
+.callout h3{font-size:.95rem; margin-bottom:.4rem}
+.callout p{margin:0; font-size:.9rem; color:var(--ink-2)}
+.callout p + p{margin-top:.55rem}
+
+/* ── footer ───────────────────────────────────────────────── */
+footer{border-top:2px solid var(--ink); padding-block:1.6rem 2.4rem;
+  font-family:var(--f-mono); font-size:.74rem; color:var(--ink-2)}
+footer .wrap{display:flex; flex-wrap:wrap; gap:.5rem 1.5rem; align-items:baseline}
+footer .spacer{margin-left:auto}
+@media (prefers-reduced-motion:no-preference){
+  .fade{animation:f .5s ease both}
+  @keyframes f{from{opacity:0; transform:translateY(4px)} to{opacity:1; transform:none}}
+}
+</style>
+</head>
+<body>
+
+<header class="head">
+  <div class="wrap">
+    <span class="mark">MCWP</span>
+    <span class="sub">Material cost &amp; waste prediction</span>
+    <span class="spacer"></span>
+    <a class="repo" href="https://github.com/AkurasKurasa/mcwp">github.com/AkurasKurasa/mcwp</a>
+  </div>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <h1 class="thesis">A budget is not a number. It's a <em>distribution</em>.</h1>
+    <p class="lede">
+      MCWP predicts material waste line by line, simulates the finished cost four
+      thousand times, and sizes the contingency that pulls overrun risk back to 10%.
+      Everything below is saved output from the trained model — pick a project.
+    </p>
+
+    <div class="tabs" role="tablist" aria-label="Sample projects"></div>
+
+    <div class="figs"></div>
+
+    <div class="chartwrap">
+      <div class="chart-hd">
+        <h2>Simulated cost at completion</h2>
+        <span class="note">4,000 draws over waste and price dispersion</span>
+        <span class="verdict"></span>
+      </div>
+      <div class="chartbox"></div>
+      <div class="legend">
+        <span><i style="background:var(--safe)"></i>Finishes within budget</span>
+        <span><i style="background:var(--risk)"></i>Overruns</span>
+        <span><i style="background:var(--ink);height:2px"></i>Budget</span>
+        <span><i style="background:var(--ink-2);height:2px"></i>p90 — where the buffer reaches</span>
+      </div>
+    </div>
+  </div>
+
+  <section class="wrap">
+    <p class="eyebrow">Per material</p>
+    <h2 class="h2">What each line is predicted to waste</h2>
+    <p class="intro">
+      The regressor predicts a waste rate for every material line, with an 80%
+      interval around it. Benchmark is the trade's customary allowance — the
+      figure an estimator would otherwise pencil in.
+    </p>
+    <div class="scroller">
+      <table class="ledger">
+        <caption>Quantities as entered; waste and cost as predicted.</caption>
+        <thead>
+          <tr>
+            <th>Material</th><th>Quantity</th><th>Predicted waste</th>
+            <th>80% band</th><th>Benchmark</th><th>Wasted value</th><th>Share of cost</th>
+          </tr>
+        </thead>
+        <tbody id="lines"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <p class="eyebrow">Attribution</p>
+    <h2 class="h2">Where the risk actually sits</h2>
+    <p class="intro">
+      Ranked by contribution to the variance of the total, not by how much each
+      line costs. A cheap material that moves unpredictably outranks an expensive
+      one that doesn't.
+    </p>
+    <ul class="risks" id="risks"></ul>
+  </section>
+
+  <section class="wrap">
+    <p class="eyebrow">The model</p>
+    <h2 class="h2">Measured on held-out projects</h2>
+    <p class="intro">
+      Two gradient-boosted models: a regressor for waste per line, a classifier
+      for overrun per project. Split by project, so no project appears on both
+      sides of the line.
+    </p>
+    <div class="metrics" id="metrics"></div>
+
+    <div class="callout">
+      <h3>The band is calibrated, not decorative</h3>
+      <p id="cal-note"></p>
+      <p>
+        The contingency is the distance from the budget to the 90th percentile of
+        the simulated cost — which is why it moves when the distribution's shape
+        moves, not just its centre.
+      </p>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <p class="eyebrow">Run it</p>
+    <h2 class="h2">The live tool needs a Python process</h2>
+    <p class="intro">
+      This page is static. The predictor itself is a Flask app that loads the
+      trained model and runs the simulation per request — so it runs locally, or
+      on any host that executes Python.
+    </p>
+<pre><span class="c"># clone and run — first launch fits the models, about 50 seconds</span>
+git clone https://github.com/AkurasKurasa/mcwp.git
+cd mcwp
+python -m pip install -r requirements.txt
+python app.py
+<span class="c"># http://127.0.0.1:5000</span></pre>
+    <div class="callout">
+      <h3>Why the predictor isn't running on this page</h3>
+      <p>
+        GitHub Pages serves files; it does not run processes. There is no Python
+        here to load the model or run the Monte Carlo, so the numbers above are a
+        saved run rather than a live one.
+      </p>
+      <p>
+        The repository ships a <span class="mono">render.yaml</span> and a
+        <span class="mono">Procfile</span>. Point a Python host at either and the
+        tool works exactly as it does locally.
+      </p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>MCWP — material cost &amp; waste prediction</span>
+    <span class="spacer"></span>
+    <span id="corpus"></span>
+  </div>
+</footer>
+
+<script src="data.js"></script>
+<script>
+(function(){
+  "use strict";
+  var D = window.MCWP;
+  if (!D) return;
+
+  var money = function(v, d){
+    d = d || 0;
+    return (v < 0 ? "-" : "") + "$" + Math.abs(v).toLocaleString("en-US",
+      {minimumFractionDigits:d, maximumFractionDigits:d});
+  };
+  var compact = function(v){
+    var a = Math.abs(v), s = v < 0 ? "-" : "";
+    if (a >= 1e6) return s + "$" + (a/1e6).toFixed(2) + "M";
+    if (a >= 1e3) return s + "$" + (a/1e3).toFixed(0) + "K";
+    return s + "$" + a.toFixed(0);
+  };
+  var pct = function(v, d){ return v.toFixed(d === undefined ? 1 : d) + "%"; };
+  var el = function(sel){ return document.querySelector(sel); };
+
+  /* ── tabs ─────────────────────────────────────────────── */
+  var tabs = el(".tabs"), current = 0;
+  D.projects.forEach(function(p, i){
+    var b = document.createElement("button");
+    b.className = "tab"; b.type = "button"; b.role = "tab";
+    b.textContent = p.name;
+    b.setAttribute("aria-selected", i === 0 ? "true" : "false");
+    b.addEventListener("click", function(){ select(i); });
+    tabs.appendChild(b);
+  });
+
+  function select(i){
+    current = i;
+    Array.prototype.forEach.call(tabs.children, function(b, j){
+      b.setAttribute("aria-selected", j === i ? "true" : "false");
+    });
+    render(D.projects[i]);
+  }
+
+  /* ── figure row ───────────────────────────────────────── */
+  function figures(p){
+    var over = p.variance < 0;
+    return [
+      {k:"Budget",          v:compact(p.budget),                 n:p.area.toLocaleString()+" m² · "+p.weeks+" weeks"},
+      {k:"Expected cost",   v:compact(p.expected),               n:(over?"over":"under")+" by "+compact(Math.abs(p.variance)), cls:over?"risk":"safe"},
+      {k:"Predicted waste", v:pct(p.waste.pct,2),                n:pct(p.waste.low_pct,1)+" – "+pct(p.waste.high_pct,1)+" band"},
+      {k:"Overrun risk",    v:pct(p.overrun.probability,1),      n:"benchmark allowance "+pct(p.waste.benchmark_pct,1), cls:p.overrun.probability>=50?"risk":"safe"},
+      {k:"Contingency",     v:pct(p.buffer.pct_of_budget,2),     n:compact(p.buffer.amount)+" to hit "+p.buffer.target_risk+"%"}
+    ];
+  }
+
+  function render(p){
+    /* figures */
+    var f = el(".figs");
+    f.innerHTML = "";
+    figures(p).forEach(function(d){
+      var div = document.createElement("div");
+      div.className = "fig fade";
+      div.innerHTML = '<span class="k">'+d.k+'</span>' +
+        '<span class="v '+(d.cls||"")+'">'+d.v+'</span>' +
+        '<span class="n">'+d.n+'</span>';
+      f.appendChild(div);
+    });
+
+    /* verdict chip */
+    var v = el(".verdict");
+    v.textContent = p.overrun.verdict;
+    v.style.color = p.overrun.probability >= 50 ? "var(--risk)" : "var(--safe)";
+
+    chart(p);
+    ledger(p);
+    risks(p);
+  }
+
+  /* ── the distribution ─────────────────────────────────── */
+  function chart(p){
+    var H = p.overrun.histogram, box = el(".chartbox");
+    var W = 1000, HT = 300, PAD = {t:26, r:16, b:38, l:16};
+    var xs = H.map(function(d){ return d.x; });
+    var lo = Math.min(Math.min.apply(null, xs), p.budget);
+    var hi = Math.max(Math.max.apply(null, xs), p.budget, p.overrun.p90);
+    var span = (hi - lo) || 1;
+    lo -= span * 0.06; hi += span * 0.06; span = hi - lo;
+
+    var maxN = Math.max.apply(null, H.map(function(d){ return d.n; })) || 1;
+    var bw = H.length > 1 ? Math.abs(H[1].x - H[0].x) : span / 26;
+    var X = function(val){ return PAD.l + (val - lo) / span * (W - PAD.l - PAD.r); };
+    var Y = function(n){ return HT - PAD.b - (n / maxN) * (HT - PAD.t - PAD.b); };
+
+    var bars = H.map(function(d){
+      var over = d.x > p.budget;
+      var x0 = X(d.x - bw/2) + 0.6, x1 = X(d.x + bw/2) - 0.6;
+      return '<rect x="'+x0.toFixed(1)+'" y="'+Y(d.n).toFixed(1)+
+             '" width="'+Math.max(x1-x0,0.5).toFixed(1)+
+             '" height="'+(HT - PAD.b - Y(d.n)).toFixed(1)+
+             '" fill="'+(over ? "var(--risk)" : "var(--safe)")+'"/>';
+    }).join("");
+
+    var bx = X(p.budget), px = X(p.overrun.p90), base = HT - PAD.b;
+    var svg =
+      '<svg viewBox="0 0 '+W+' '+HT+'" role="img" aria-label="Simulated cost distribution for '+
+        p.name+'. Budget '+money(p.budget)+', 90th percentile '+money(p.overrun.p90)+'.">' +
+      bars +
+      /* baseline */
+      '<line x1="'+PAD.l+'" y1="'+base+'" x2="'+(W-PAD.r)+'" y2="'+base+
+        '" stroke="var(--ink)" stroke-width="1.5"/>' +
+      /* buffer span */
+      '<line x1="'+bx.toFixed(1)+'" y1="'+(PAD.t-12)+'" x2="'+px.toFixed(1)+'" y2="'+(PAD.t-12)+
+        '" stroke="var(--ink-2)" stroke-width="1"/>' +
+      '<text x="'+((bx+px)/2).toFixed(1)+'" y="'+(PAD.t-18)+
+        '" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="13" ' +
+        'fill="var(--ink-2)">contingency '+compact(p.buffer.amount)+'</text>' +
+      /* p90 */
+      '<line x1="'+px.toFixed(1)+'" y1="'+(PAD.t-12)+'" x2="'+px.toFixed(1)+'" y2="'+base+
+        '" stroke="var(--ink-2)" stroke-width="1.5" stroke-dasharray="2 3"/>' +
+      '<text x="'+px.toFixed(1)+'" y="'+(base+22)+'" text-anchor="middle" ' +
+        'font-family="IBM Plex Mono, monospace" font-size="13" fill="var(--ink-2)">p90 '+
+        compact(p.overrun.p90)+'</text>' +
+      /* budget */
+      '<line x1="'+bx.toFixed(1)+'" y1="'+(PAD.t-12)+'" x2="'+bx.toFixed(1)+'" y2="'+base+
+        '" stroke="var(--ink)" stroke-width="2"/>' +
+      '<text x="'+bx.toFixed(1)+'" y="'+(base+22)+'" text-anchor="middle" ' +
+        'font-family="IBM Plex Mono, monospace" font-size="13" font-weight="600" ' +
+        'fill="var(--ink)">budget '+compact(p.budget)+'</text>' +
+      '</svg>';
+    box.innerHTML = svg;
+  }
+
+  /* ── ledger ───────────────────────────────────────────── */
+  function ledger(p){
+    el("#lines").innerHTML = p.lines.map(function(l){
+      return "<tr>" +
+        "<td>"+l.name+"</td>" +
+        "<td>"+l.qty.toLocaleString("en-US",{maximumFractionDigits:0})+" "+l.unit+"</td>" +
+        "<td>"+pct(l.waste,2)+"</td>" +
+        '<td class="band">'+pct(l.low,1)+" – "+pct(l.high,1)+"</td>" +
+        '<td class="band">'+pct(l.bench,1)+"</td>" +
+        "<td>"+money(l.wasted_value)+"</td>" +
+        "<td>"+pct(l.share,1)+"</td>" +
+      "</tr>";
+    }).join("");
+  }
+
+  /* ── risk attribution ─────────────────────────────────── */
+  function risks(p){
+    var top = p.risks[0] ? p.risks[0].variance_share : 1;
+    el("#risks").innerHTML = p.risks.map(function(r){
+      var w = Math.max(2, r.variance_share / top * 100);
+      return "<li>" +
+        '<span class="nm">'+r.name+"</span>" +
+        '<span class="pc">'+pct(r.variance_share,1)+" of variance</span>" +
+        '<span class="bar"><span style="width:'+w.toFixed(1)+'%"></span></span>' +
+        '<span class="meta">predicted '+pct(r.waste_pct,2)+
+          " against a "+pct(r.benchmark_pct,1)+" allowance · "+
+          money(r.wasted_value)+" of material discarded</span>" +
+      "</li>";
+    }).join("");
+  }
+
+  /* ── static: model metrics ────────────────────────────── */
+  (function(){
+    var m = D.model, w = m.waste, o = m.overrun;
+    var rows = [
+      {k:"Waste R²",        v:w.r2.toFixed(3),            n:"variance explained, held-out lines"},
+      {k:"Waste MAE",       v:w.mae_pp.toFixed(2)+"pp",   n:"mean absolute error in percentage points"},
+      {k:"Band coverage",   v:w.coverage_80.toFixed(1)+"%", n:"against an 80% target"},
+      {k:"Overrun AUC",     v:o.auc.toFixed(3),           n:"ranking skill on held-out projects"},
+      {k:"Brier score",     v:o.brier.toFixed(3),         n:"base rate "+o.base_rate.toFixed(1)+"%"},
+      {k:"Accuracy",        v:o.accuracy*100 < 100 ? (o.accuracy*100).toFixed(1)+"%" : "-",
+       n:o.test_projects+" test projects"}
+    ];
+    el("#metrics").innerHTML = rows.map(function(r){
+      return '<div class="metric"><span class="k">'+r.k+'</span>' +
+             '<span class="v">'+r.v+'</span><span class="n">'+r.n+"</span></div>";
+    }).join("");
+
+    el("#cal-note").textContent =
+      "The 80% interval was tuned until it actually covered 80% of held-out lines — " +
+      "it lands at " + w.coverage_80.toFixed(1) + "%. An interval that does not hold " +
+      "its coverage is a decoration, and a contingency sized from it would be fiction.";
+
+    el("#corpus").textContent =
+      m.corpus_projects.toLocaleString() + " projects · " +
+      m.corpus_lines.toLocaleString() + " material lines · fit in " +
+      m.fit_seconds.toFixed(1) + "s";
+  })();
+
+  select(0);
+})();
+</script>
+</body>
+</html>
