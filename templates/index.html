@@ -1,0 +1,560 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Prediction{% endblock %}
+{% block crumb %}{{ r.project.project_name }}{% endblock %}
+
+{% block topaction %}
+<button class="btn primary sm" type="submit" form="brief-form">
+  {{ icon('zap') }}<span class="cta-label">Run prediction</span></button>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-head reveal">
+  <div class="titles">
+    <h1 class="display">Waste, overrun risk and the buffer you need.</h1>
+    <p class="lede">Describe the project and its materials list. Two models trained on
+      {{ metrics.corpus_projects|num(0) }} completed projects return the likely waste rate, the
+      probability the budget is exceeded, which materials carry that risk, and the contingency
+      that brings it back to {{ r.buffer.target_risk }}%.</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ 1. PROJECT BRIEF ══════ -->
+<section id="brief" class="section">
+  <script id="unit-map" type="application/json">{{ units|tojson }}</script>
+  <form method="post" id="brief-form" class="grid g-5-7 mb-24" style="align-items:start">
+
+    <div class="panel lift reveal">
+      <div class="panel-head">
+        <div><h3>Project</h3><div class="sub">Scope, location and programme</div></div>
+      </div>
+
+      <div class="field mb-16">
+        <label>Project name</label>
+        <input class="input" name="project_name" value="{{ r.project.project_name }}"
+               placeholder="e.g. Harbour Point Tower">
+      </div>
+
+      <div class="field mb-16">
+        <label>Project type</label>
+        <select class="input" name="project_type" id="f-type">
+          {% for family in ['Residential', 'Commercial', 'Other'] %}
+          <optgroup label="{{ family }}">
+            {% for pt in catalog.PROJECT_TYPES if pt.family == family %}
+            <option value="{{ pt.key }}" {{ 'selected' if pt.key == r.project.project_type }}>
+              {{ pt.name }}</option>
+            {% endfor %}
+          </optgroup>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="field mb-16">
+        <label>Location</label>
+        <select class="input" name="region">
+          {% for region in catalog.REGIONS %}
+          <option value="{{ region.key }}" {{ 'selected' if region.key == r.project.region }}>
+            {{ region.name }} &mdash; cost index {{ region.cost_index }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="grid g2" style="gap:16px">
+        <div class="field">
+          <label>Project size</label>
+          <div class="input-affix">
+            <input class="input" type="number" name="project_area" id="f-area"
+                   min="50" max="500000" step="10" value="{{ r.project.project_area|round|int }}">
+            <span class="suffix">m&sup2;</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Duration</label>
+          <div class="input-affix">
+            <input class="input" type="number" name="duration_weeks"
+                   min="2" max="260" value="{{ r.project.duration_weeks|round|int }}">
+            <span class="suffix">weeks</span>
+          </div>
+        </div>
+      </div>
+
+      <hr class="hr">
+
+      <div class="field">
+        <label>Material budget</label>
+        <div class="input-affix">
+          <input class="input mono" type="number" name="budget" id="f-budget" min="0" step="1000"
+                 value="{{ r.project.budget|round|int }}">
+          <span class="suffix">{{ CURRENCY }}</span>
+        </div>
+        <span class="hint">
+          {% if r.project.auto_budget %}
+          No budget was given, so the benchmark cost of this materials list is being used.
+          {% else %}
+          Benchmark for this list is <b class="mono">{{ r.cost.benchmark|money }}</b> &mdash;
+          you are at <b class="mono">{{ (r.cost.budget_ratio * 100)|round|int }}%</b> of it.
+          {% endif %}
+        </span>
+      </div>
+    </div>
+
+    <div class="panel lift reveal">
+      <div class="panel-head">
+        <div><h3>Materials list</h3>
+          <div class="sub">What is being procured, and how much of it is needed in the works</div></div>
+        <div class="right">
+          <button type="button" class="btn sm ghost" id="load-sample">
+            {{ icon('clipboard', 14) }} Load sample</button>
+          <button type="button" class="btn sm ghost" id="suggest-lines">
+            {{ icon('sparkle', 14) }} Suggest</button>
+        </div>
+      </div>
+
+      <div class="line-head">
+        <span>Material</span><span>Installed quantity</span><span></span>
+      </div>
+      <div id="lines">
+        {% for line in r.lines %}
+        <div class="line-row">
+          <select class="input" name="material">
+            {% for category in catalog.MATERIAL_CATEGORIES %}
+            <optgroup label="{{ category }}">
+              {% for m in catalog.MATERIALS if m.category == category %}
+              <option value="{{ m.key }}" {{ 'selected' if m.key == line.key }}>{{ m.name }}</option>
+              {% endfor %}
+            </optgroup>
+            {% endfor %}
+          </select>
+          <div class="input-affix">
+            <input class="input mono" type="number" name="quantity" min="0.1" step="0.1"
+                   value="{{ line.quantity }}">
+            <span class="suffix">{{ line.unit }}</span>
+          </div>
+          <button type="button" class="btn icon ghost line-drop" title="Remove">
+            {{ icon('trash', 15) }}</button>
+        </div>
+        {% endfor %}
+      </div>
+
+      <button type="button" class="btn ghost block mt-16" id="add-line">
+        {{ icon('plus') }} Add material</button>
+
+      <hr class="hr">
+      <div class="row gap-12 wrap">
+        <span class="badge">{{ r.lines|length }} materials</span>
+        <span class="badge">{{ r.cost.procurement|money_compact }} procurement</span>
+        <button class="btn primary ml-auto" type="submit">
+          {{ icon('zap') }} Run prediction</button>
+      </div>
+    </div>
+  </form>
+
+  <div class="stale-note panel tight reveal" id="stale" hidden>
+    <div class="row gap-12">
+      <span class="badge amber">{{ icon('info', 12) }} Inputs changed</span>
+      <span class="small muted">The headline figures below are live. Run the prediction to refresh
+        the material breakdown, risk ranking and actions.</span>
+      <button class="btn sm primary ml-auto" type="submit" form="brief-form">Re-run</button>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ 2. PREDICTION ═════ -->
+<section id="forecast" class="section">
+  <div class="section-title reveal">
+    <h2>Prediction</h2>
+    <span class="dim small">{{ r.project.project_type_name }} &middot; {{ r.project.region_name }}
+      &middot; {{ r.project.project_area|num(0) }} m&sup2; over {{ r.project.duration_weeks|num(0) }} weeks</span>
+  </div>
+
+  <div class="grid g4 mb-24">
+    <div class="panel lift kpi reveal">
+      <div class="cap">{{ icon('gauge') }} Likely material waste</div>
+      <div class="val"><span data-out="waste">{{ r.waste.pct }}</span><span class="unit">%</span></div>
+      <div class="foot">
+        <span class="badge violet">80% band
+          <b data-out="waste-band">{{ r.waste.low_pct }}–{{ r.waste.high_pct }}%</b></span>
+      </div>
+      <div class="tiny dim mt-8">benchmark {{ r.waste.benchmark_pct }}% &middot;
+        <span data-out="wasted-value">{{ r.waste.wasted_value|money }}</span> of material discarded</div>
+    </div>
+
+    <div class="panel lift kpi reveal">
+      <div class="cap">{{ icon('alert') }} Cost overrun risk</div>
+      <div class="val" style="color:{{ r.overrun.verdict.colour }}">
+        <span data-out="overrun">{{ r.overrun.probability }}</span><span class="unit">%</span></div>
+      <div class="foot">
+        <span class="badge {{ r.overrun.verdict.tone }}" data-out="verdict">
+          {{ r.overrun.verdict.label }}</span>
+      </div>
+      <div class="tiny dim mt-8">probability the material budget is exceeded</div>
+    </div>
+
+    <div class="panel lift kpi reveal">
+      <div class="cap">{{ icon('shield') }} High-risk materials</div>
+      {% set high = r.risks|selectattr('band', 'equalto', 'high')|list %}
+      {% set medium = r.risks|selectattr('band', 'equalto', 'medium')|list %}
+      <div class="val"><span data-out="risk-count">{{ high|length }}</span>
+        <span class="unit">of {{ r.lines|length }}</span></div>
+      <div class="foot">
+        <span class="badge {{ 'rose' if high else 'amber' if medium else 'mint' }}">
+          {{ r.risks[0].name if r.risks else '—' }}</span>
+      </div>
+      <div class="tiny dim mt-8">{{ medium|length }} more on watch</div>
+    </div>
+
+    <div class="panel lift kpi reveal">
+      <div class="cap">{{ icon('coins') }} Recommended buffer</div>
+      <div class="val"><span data-out="buffer">{{ r.buffer.amount|money_compact }}</span></div>
+      <div class="foot">
+        <span class="badge mint"><span data-out="buffer-pct">{{ r.buffer.pct_of_budget }}</span>%
+          of budget</span>
+      </div>
+      <div class="tiny dim mt-8">holds overrun risk at {{ r.buffer.target_risk }}%</div>
+    </div>
+  </div>
+
+  <div class="grid g-7-5 mb-24">
+    <div class="panel lift reveal">
+      <div class="panel-head">
+        <div><h3>Where the outturn lands</h3>
+          <div class="sub">{{ simulations|num(0) }} simulations over the forecast's own residual
+            spread and regional price dispersion</div></div>
+      </div>
+      <div class="chart" id="dist-chart"></div>
+      <div class="legend">
+        <span class="item"><span class="swatch" style="background:var(--tone-4)"></span>
+          Simulated outturn</span>
+        <span class="item"><span class="swatch" style="background:var(--text)"></span>
+          Budget <b data-out="leg-budget">{{ r.cost.budget|money }}</b></span>
+        <span class="item"><span class="swatch" style="background:var(--tone-3)"></span>
+          Median <b data-out="leg-p50">{{ r.overrun.p50|money }}</b></span>
+        <span class="item"><span class="swatch" style="background:var(--tone-2)"></span>
+          P90 <b data-out="leg-p90">{{ r.overrun.p90|money }}</b></span>
+      </div>
+    </div>
+
+    <div class="panel lift reveal">
+      <div class="panel-head">
+        <div><h3>Overrun probability</h3><div class="sub">Gradient-boosted classifier</div></div>
+      </div>
+      <div class="chart" id="risk-gauge" style="max-width:230px;margin:4px auto 0"></div>
+      <div class="center">
+        <span class="badge {{ r.overrun.verdict.tone }}" data-out="verdict2">
+          {{ r.overrun.verdict.label }}</span>
+      </div>
+      <hr class="hr">
+      <div class="stack gap-12 small">
+        <div class="row"><span class="muted">Expected outturn</span>
+          <b class="ml-auto mono" data-out="expected">{{ r.cost.expected|money }}</b></div>
+        <div class="row"><span class="muted">Stated budget</span>
+          <b class="ml-auto mono" data-out="stated">{{ r.cost.budget|money }}</b></div>
+        <div class="row"><span class="muted">Headroom</span>
+          <b class="ml-auto mono {{ 'c-mint' if r.cost.variance >= 0 else 'c-rose' }}"
+             data-out="headroom">{{ r.cost.variance|money }}</b></div>
+        <div class="row"><span class="muted">Simulation agrees at</span>
+          <b class="ml-auto mono" data-out="simulated">{{ r.overrun.simulated }}%</b></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════ 3. BUDGET & BUFFER ═════ -->
+<section id="budget" class="section">
+  <div class="section-title reveal">
+    <h2>Budget &amp; buffer</h2>
+    <span class="dim small">What to carry so the number holds</span>
+  </div>
+
+  <div class="grid g-8-4 mb-24">
+    <div class="panel lift reveal">
+      <div class="panel-head">
+        <div><h3>Budget ladder</h3>
+          <div class="sub">Benchmark, forecast, stated budget and the recommended working budget</div></div>
+      </div>
+
+      {% set ladder_max = [r.cost.benchmark, r.cost.expected, r.cost.budget,
+                           r.buffer.recommended_budget, r.overrun.p90]|max %}
+      <div class="waterfall">
+        {% set rows = [
+          ('Benchmark cost', r.cost.benchmark, 'var(--tone-5)',
+           'List price with industry baseline waste'),
+          ('Forecast outturn', r.cost.expected, 'var(--tone-4)',
+           'What the model expects this package to cost'),
+          ('Stated budget', r.cost.budget, 'var(--tone-3)',
+           'What you told us you have'),
+          ('P90 outturn', r.overrun.p90, 'var(--tone-2)',
+           'Only 1 run in 10 finishes above this'),
+          ('Recommended budget', r.buffer.recommended_budget, 'var(--tone-1)',
+           'Budget plus the contingency that holds risk at target')
+        ] %}
+        {% for label, value, fill, note in rows %}
+        <div class="wf-row">
+          <span class="lab" title="{{ note }}">{{ label }}</span>
+          <div class="bar-wrap">
+            <div class="b" data-fill="{{ (value / ladder_max * 100)|round(2) }}"
+                 style="background:{{ fill }}"></div>
+          </div>
+          <span class="amt">{{ value|money }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="panel lift reveal" style="border-color:color-mix(in srgb,var(--mint) 35%,transparent)">
+      <div class="row gap-8 mb-16">
+        <span class="badge mint">{{ icon('shield', 12) }} Contingency</span>
+      </div>
+      {% if r.buffer.adequate %}
+      <div class="kpi" style="min-height:auto">
+        <div class="val c-mint">Covered</div>
+        <div class="foot dim">The 90th-percentile outturn of {{ r.overrun.p90|money }} already sits
+          inside the stated budget.</div>
+      </div>
+      {% else %}
+      <div class="kpi" style="min-height:auto">
+        <div class="val c-mint">{{ r.buffer.amount|money }}</div>
+        <div class="foot dim">{{ r.buffer.pct_of_budget }}% of the stated budget</div>
+      </div>
+      <hr class="hr">
+      <div class="stack gap-12 small">
+        <div class="row"><span class="muted">Working budget</span>
+          <b class="ml-auto mono">{{ r.buffer.recommended_budget|money }}</b></div>
+        <div class="row"><span class="muted">Residual risk</span>
+          <b class="ml-auto mono">{{ r.buffer.target_risk }}%</b></div>
+      </div>
+      {% endif %}
+      <hr class="hr">
+      <div class="stat-strip" style="justify-content:space-between">
+        <div class="s"><div class="k">P10</div><div class="v">{{ r.overrun.p10|money_compact }}</div></div>
+        <div class="s"><div class="k">P50</div><div class="v">{{ r.overrun.p50|money_compact }}</div></div>
+        <div class="s"><div class="k">P90</div><div class="v">{{ r.overrun.p90|money_compact }}</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════ 4. MATERIALS AT RISK ══════ -->
+<section id="materials" class="section">
+  <div class="section-title reveal">
+    <h2>Materials at risk</h2>
+    <span class="dim small">Ranked by money at stake, forecast uncertainty and price exposure</span>
+  </div>
+
+  <div class="grid g-7-5 mb-24">
+    <div class="panel lift flush reveal">
+      <div class="panel-head" style="padding:22px 22px 0;margin-bottom:14px">
+        <div><h3>Line-by-line forecast</h3>
+          <div class="sub">Order quantities already include the predicted waste</div></div>
+      </div>
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr>
+            <th>Material</th><th class="right">Installed</th><th class="right">Order</th>
+            <th class="right">Waste</th><th class="right">Wasted value</th><th class="right">Line cost</th>
+          </tr></thead>
+          <tbody>
+            {% for line in r.lines %}
+            <tr>
+              <td>
+                <div class="row gap-8">
+                  <span class="swatch" style="background:{{ line.accent }}"></span>
+                  <div class="cell-title">
+                    <b>{{ line.name }}</b>
+                    <span>{{ line.value_share }}% of value &middot; {{ SYMBOL }}{{ line.unit_price|num(2) }}/{{ line.unit }}</span>
+                  </div>
+                </div>
+              </td>
+              <td class="right muted">{{ line.quantity|num(0) }}</td>
+              <td class="right">{{ line.order_qty|num(0) }}</td>
+              <td class="right strong">
+                {{ line.waste_pct }}%
+                <div class="tiny dim">{{ line.waste_low }}–{{ line.waste_high }}</div>
+              </td>
+              <td class="right c-rose">{{ line.wasted_value|money }}</td>
+              <td class="right">{{ line.total|money }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel lift reveal">
+      <div class="panel-head">
+        <div><h3>Risk ranking</h3><div class="sub">Score out of 100</div></div>
+      </div>
+      <div class="stack gap-16">
+        {% for risk in r.risks %}
+        <div class="risk-row">
+          <div class="row gap-8 mb-8">
+            <span class="swatch" style="background:{{ risk.accent }}"></span>
+            <b class="small">{{ risk.name }}</b>
+            <span class="badge {{ 'rose' if risk.band == 'high' else 'amber' if risk.band == 'medium' else 'mint' }} ml-auto">
+              {{ risk.band }} · {{ risk.score }}</span>
+          </div>
+          <div class="rail">
+            <div class="fill" data-fill="{{ risk.score }}"
+                 style="background:{{ risk.accent }}"></div>
+          </div>
+          <div class="tiny dim mt-8">{{ risk.reasons|join(' · ') }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ 5. WHAT TO DO ══════ -->
+<section id="actions" class="section">
+  <div class="section-title reveal">
+    <h2>What to do</h2>
+    <span class="dim small">Ordered by what moves the number most</span>
+  </div>
+
+  <div class="grid g2 mb-24">
+    {% for item in r.advice %}
+    <div class="panel lift reveal advice {{ item.tone }}">
+      <div class="row gap-12 mb-8">
+        <span class="rank">{{ loop.index }}</span>
+        <b>{{ item.title }}</b>
+      </div>
+      <p class="small muted" style="margin:0">{{ item.detail }}</p>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════ 6. MODEL CARD ════ -->
+<section id="model" class="section">
+  <div class="section-title reveal">
+    <h2>Model card</h2>
+    <span class="dim small">What was trained, on what, and how well it does</span>
+  </div>
+
+  <div class="grid g4 mb-24">
+    <div class="panel lift kpi reveal" style="min-height:126px"><div class="cap">{{ icon('target') }} Waste R&sup2;</div>
+      <div class="val">{{ '%.3f'|format(metrics.waste.r2) }}</div>
+      <div class="foot dim">MAE {{ metrics.waste.mae_pp|num(2) }} pp</div>
+    </div>
+    <div class="panel lift kpi reveal" style="min-height:126px"><div class="cap">{{ icon('shield') }} Overrun AUC</div>
+      <div class="val">{{ '%.3f'|format(metrics.overrun.auc) }}</div>
+      <div class="foot dim">Brier {{ '%.3f'|format(metrics.overrun.brier) }}</div>
+    </div>
+    <div class="panel lift kpi reveal" style="min-height:126px"><div class="cap">{{ icon('gauge') }} Band coverage</div>
+      <div class="val">{{ metrics.waste.coverage_80|num(1) }}<span class="unit">%</span></div>
+      <div class="foot dim">nominal 80%</div>
+    </div>
+    <div class="panel lift kpi reveal" style="min-height:126px"><div class="cap">{{ icon('box') }} Archive</div>
+      <div class="val">{{ metrics.corpus_projects|compact }}</div>
+      <div class="foot dim">{{ metrics.corpus_lines|num(0) }} material lines</div>
+    </div>
+  </div>
+
+  <div class="grid g3">
+    {% macro importance(title, rows, gradient) %}
+    {% set lead = rows[0] %}
+    {% set rest = rows[1:7] %}
+    {% set rest_top = rest[0].share if rest and rest[0].share > 0 else 1 %}
+    <div class="panel lift reveal">
+      <div class="panel-head"><div><h3>{{ title }}</h3>
+        <div class="sub">Permutation importance</div></div></div>
+
+      <div class="lead-driver">
+        <div class="row gap-8">
+          <b>{{ lead.label }}</b>
+          <span class="ml-auto mono">{{ (lead.share * 100)|num(1) }}%</span>
+        </div>
+        <div class="tiny dim mt-8">Dominant by a wide margin &mdash; it sets the baseline
+          the rest only modulate.</div>
+      </div>
+
+      <div class="tiny dim mt-16 mb-16" style="letter-spacing:.12em;text-transform:uppercase">
+        Beyond that, ranked among themselves</div>
+      <div class="meters">
+        {% for feature in rest %}
+        <div class="meter">
+          <div class="top"><span class="name">{{ feature.label }}</span>
+            <span class="value">{{ (feature.share * 100)|num(2) }}%</span></div>
+          <div class="rail"><div class="fill" data-fill="{{ (feature.share / rest_top * 100)|round(1) }}"
+               style="background:{{ gradient }}"></div></div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endmacro %}
+
+    {{ importance('What drives the waste forecast', metrics_importance_waste,
+                  'var(--tone-2)') }}
+    {{ importance('What drives overrun risk', metrics_importance_overrun,
+                  'var(--tone-3)') }}
+
+    <div class="panel lift reveal">
+      <div class="panel-head"><div><h3>Is the probability honest?</h3>
+        <div class="sub">Predicted risk against observed overrun rate</div></div></div>
+      <div class="chart" id="reliability-chart"></div>
+      <p class="tiny dim mt-8" style="margin:0">Points on the dashed line mean that when the model
+        says 40%, roughly 40% of those projects really did overrun.</p>
+    </div>
+  </div>
+
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const STATE = {
+  hist: {{ r.overrun.histogram|tojson }},
+  budget: {{ r.cost.budget }},
+  p50: {{ r.overrun.p50 }},
+  p90: {{ r.overrun.p90 }},
+  risk: {{ r.overrun.probability }},
+  colour: '{{ r.overrun.verdict.colour }}',
+  reliability: {{ reliability|tojson }},
+  units: {{ units|tojson }},
+};
+
+function paint() {
+  MC.distribution(document.getElementById('dist-chart'), {
+    height: 300,
+    bins: STATE.hist.map((b) => ({ x: b.x, n: b.n })),
+    markers: [
+      { x: STATE.budget, label: 'Budget', color: 'var(--text)', bold: true },
+      { x: STATE.p50, label: 'Median', color: 'var(--tone-3)' },
+      { x: STATE.p90, label: 'P90', color: 'var(--tone-2)' },
+    ],
+  });
+
+  MC.gauge(document.getElementById('risk-gauge'), {
+    value: STATE.risk, max: 100, size: 230, color: STATE.colour,
+    label: 'chance of overrun', format: (v) => `${v.toFixed(0)}%`,
+  });
+
+  if (STATE.reliability.length) {
+    MC.scatter(document.getElementById('reliability-chart'), {
+      height: 240,
+      points: STATE.reliability.map((p) => ({
+        x: p.predicted, y: p.observed, r: p.n, accent: 'var(--tone-3)', label: `${p.n} projects`,
+      })),
+      xLabel: 'Predicted', yLabel: 'Observed',
+      xFormat: (v) => `${v.toFixed(0)}%`, yFormat: (v) => `${v.toFixed(0)}%`,
+      diagonal: true, max: 100,
+    });
+  }
+}
+paint();
+document.addEventListener('mcwp:theme', () => setTimeout(paint, 60));
+
+// Live edits redraw the outturn distribution and the risk gauge in place.
+window.repaintOutturn = function (data) {
+  STATE.hist = data.overrun.histogram;
+  STATE.budget = data.cost.budget;
+  STATE.p50 = data.overrun.p50;
+  STATE.p90 = data.overrun.p90;
+  STATE.risk = data.overrun.probability;
+  STATE.colour = data.overrun.verdict.colour;
+  paint();
+};
+</script>
+{% endblock %}

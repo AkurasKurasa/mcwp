@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}MCWP{% endblock %} &middot; Material Cost &amp; Waste Prediction</title>
+<meta name="description" content="Predict material waste, the probability of a cost overrun, which materials carry the risk, and the contingency a project needs.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%238b5cf6'/%3E%3Cpath d='M8 22 16 8l8 14z' fill='none' stroke='%23fff' stroke-width='2.4' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/core.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/ui.css') }}">
+</head>
+<body>
+{% from "_icons.html" import icon %}
+
+<div class="lattice" aria-hidden="true"></div>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="brand" href="#top">
+      <span class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round">
+          <path d="M4 19 12 5l8 14z"/><path d="M8.4 15.6h7.2"/>
+        </svg>
+      </span>
+      <span class="brand-text">
+        <span class="brand-name"><em>MCWP</em></span>
+        <span class="brand-desc">
+          <b>Material Cost &amp; Waste Prediction</b> &mdash; waste, overrun risk and
+          contingency, forecast before you buy.
+        </span>
+      </span>
+    </a>
+
+    <div class="masthead-actions">
+      <span class="metric-chip">
+        <span class="ok">&bull;</span> R&sup2; {{ '%.3f'|format(metrics.waste.r2) }}
+        &middot; AUC {{ '%.3f'|format(metrics.overrun.auc) }}
+      </span>
+      <span class="clock" data-clock>--:--:--</span>
+      <button class="btn icon ghost" data-theme-toggle title="Switch theme" aria-label="Switch theme">
+        <span data-theme-icon="dark">{{ icon('moon') }}</span>
+        <span data-theme-icon="light" style="display:none">{{ icon('sun') }}</span>
+      </button>
+      {% block topaction %}{% endblock %}
+    </div>
+  </div>
+</header>
+
+<main class="content" id="top">
+  {% block content %}{% endblock %}
+</main>
+
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

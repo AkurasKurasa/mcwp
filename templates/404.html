@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Not found{% endblock %}
+{% block crumb %}Not found{% endblock %}
+
+{% block content %}
+<div class="panel lift reveal in" style="padding:64px 34px;text-align:center">
+  <div class="mega" style="font-size:clamp(64px,12vw,132px)">404</div>
+  <h2 class="mt-16">Nothing here.</h2>
+  <p class="lede" style="margin:12px auto 26px">
+    This tool is a single page. Everything lives back at the prediction workspace.
+  </p>
+  <a class="btn primary" href="{{ url_for('index') }}">{{ icon('arrow-left') }} Back to the workspace</a>
+</div>
+{% endblock %}
