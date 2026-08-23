@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: mcwp
+    runtime: python
+    plan: free
+    # Fit the models at build time so the first request is not a 50s cold start.
+    buildCommand: pip install -r requirements.txt && python -c "from mcwp.bootstrap import ensure_ready; ensure_ready()"
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.10"
+      - key: SECRET_KEY
+        generateValue: true

@@ -9,6 +9,7 @@ the contingency that brings that risk down to target.
 from __future__ import annotations
 
 import json
+import os
 import warnings
 from datetime import datetime, timezone
 
@@ -22,7 +23,7 @@ from mcwp.config import CURRENCY, CURRENCY_SYMBOL, SIMULATIONS
 from mcwp.model import get_bundle
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = "mcwp-local-workspace"
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "mcwp-local-workspace")
 app.jinja_env.trim_blocks = True
 app.jinja_env.lstrip_blocks = True
 
