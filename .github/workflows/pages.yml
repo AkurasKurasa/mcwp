@@ -23,11 +23,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # enablement:true turns Pages on for the repo if it is not already,
-      # so this deploys without anyone visiting the settings screen.
+      # Requires Settings -> Pages -> Source: "GitHub Actions" to be selected
+      # once. The workflow token cannot set that itself; it is admin-scoped.
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
