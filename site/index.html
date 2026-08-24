@@ -1,496 +1,1084 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MCWP — Material Cost &amp; Waste Prediction</title>
-<meta name="description" content="Predicts construction material waste per line, simulates the finished cost, and sizes the contingency that holds overrun risk at target.">
+<title>Prediction &middot; Material Cost &amp; Waste Prediction</title>
+<meta name="description" content="Predict material waste, the probability of a cost overrun, which materials carry the risk, and the contingency a project needs.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%238b5cf6'/%3E%3Cpath d='M8 22 16 8l8 14z' fill='none' stroke='%23fff' stroke-width='2.4' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
-<style>
-/* ─────────────────────────────────────────────────────────────
-   Greenbar. Continuous-form ledger stock, the paper cost reports
-   were printed on before they lived in spreadsheets.
-   Dark mode is that paper's sibling: a green phosphor terminal.
-   ───────────────────────────────────────────────────────────── */
-:root{
-  --paper:#E7EEE1; --band:#DAE5D2; --ink:#16211A; --ink-2:#4A5B50;
-  --rule:#A3B59B; --rule-2:#C2D0B9; --risk:#B8371F; --safe:#2C6A4A;
-  --feed:#CBD8C2;
-  --f-display:"Archivo",system-ui,sans-serif;
-  --f-body:"IBM Plex Sans",system-ui,sans-serif;
-  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
-  --gut:clamp(1.1rem,4vw,2.75rem);
-  --max:74rem;
-}
-@media (prefers-color-scheme:dark){
-  :root{
-    --paper:#0A120D; --band:#111E15; --ink:#B7E8C6; --ink-2:#6E9A7C;
-    --rule:#24382B; --rule-2:#1A2A20; --risk:#FF7355; --safe:#4FD98A;
-    --feed:#152219;
-  }
-}
-*{box-sizing:border-box}
-html{-webkit-text-size-adjust:100%}
-body{
-  margin:0; background:var(--paper); color:var(--ink);
-  font-family:var(--f-body); font-size:16px; line-height:1.55;
-  -webkit-font-smoothing:antialiased;
-}
-/* tractor-feed margin, wide viewports only */
-@media (min-width:1180px){
-  body{
-    background-image:
-      radial-gradient(circle at 13px 50%, var(--feed) 3.5px, transparent 4px),
-      radial-gradient(circle at calc(100% - 13px) 50%, var(--feed) 3.5px, transparent 4px);
-    background-size:100% 26px; background-repeat:repeat-y;
-  }
-}
-.wrap{max-width:var(--max); margin:0 auto; padding:0 var(--gut)}
-a{color:inherit}
-h1,h2,h3{font-family:var(--f-display); font-weight:800; letter-spacing:-.02em; margin:0}
-.mono{font-family:var(--f-mono); font-variant-numeric:tabular-nums}
-:focus-visible{outline:2px solid var(--risk); outline-offset:3px}
-
-/* ── masthead ─────────────────────────────────────────────── */
-.head{border-bottom:2px solid var(--ink)}
-.head .wrap{display:flex; flex-wrap:wrap; gap:.5rem 1.5rem; align-items:baseline; padding-block:.85rem}
-.mark{font-family:var(--f-display); font-weight:800; font-size:1.3rem; letter-spacing:.04em}
-.head .sub{font-family:var(--f-mono); font-size:.72rem; text-transform:uppercase;
-  letter-spacing:.13em; color:var(--ink-2)}
-.head .spacer{margin-left:auto}
-.head a.repo{font-family:var(--f-mono); font-size:.75rem; text-decoration:none;
-  border-bottom:1px solid var(--rule); padding-bottom:1px}
-.head a.repo:hover{border-color:var(--ink)}
-
-/* ── hero ─────────────────────────────────────────────────── */
-.hero{padding-block:clamp(2.2rem,6vw,4rem) 1.5rem}
-.thesis{font-size:clamp(2rem,6.2vw,4rem); line-height:1.02; max-width:16ch}
-.thesis em{font-style:normal; color:var(--risk)}
-.lede{margin:1.15rem 0 0; max-width:58ch; color:var(--ink-2); font-size:1.02rem}
-
-/* ── project switcher ─────────────────────────────────────── */
-.tabs{display:flex; flex-wrap:wrap; gap:0; margin-top:2.25rem;
-  border-top:1px solid var(--rule); border-bottom:1px solid var(--rule)}
-.tab{appearance:none; background:none; border:0; cursor:pointer;
-  font-family:var(--f-mono); font-size:.76rem; letter-spacing:.06em;
-  text-transform:uppercase; color:var(--ink-2); padding:.7rem 1rem .6rem 0;
-  margin-right:1.35rem; border-bottom:2px solid transparent; margin-bottom:-1px}
-.tab:hover{color:var(--ink)}
-.tab[aria-selected="true"]{color:var(--ink); border-bottom-color:var(--risk); font-weight:600}
-
-/* ── figure row ───────────────────────────────────────────── */
-.figs{display:grid; grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr));
-  border-bottom:1px solid var(--rule)}
-.fig{padding:1.15rem 1rem 1.1rem 0}
-.fig + .fig{border-left:1px solid var(--rule-2); padding-left:1.15rem}
-.fig .k{font-family:var(--f-mono); font-size:.68rem; text-transform:uppercase;
-  letter-spacing:.11em; color:var(--ink-2); display:block; margin-bottom:.4rem}
-.fig .v{font-family:var(--f-mono); font-weight:600; font-size:clamp(1.3rem,3.2vw,1.85rem);
-  letter-spacing:-.02em; display:block; line-height:1.1}
-.fig .n{font-family:var(--f-mono); font-size:.7rem; color:var(--ink-2); display:block; margin-top:.3rem}
-.v.risk{color:var(--risk)} .v.safe{color:var(--safe)}
-
-/* ── the chart: signature element ─────────────────────────── */
-.chartwrap{padding:1.9rem 0 .5rem}
-.chart-hd{display:flex; flex-wrap:wrap; gap:.6rem 1rem; align-items:baseline; margin-bottom:1.1rem}
-.chart-hd h2{font-size:1.05rem; letter-spacing:-.01em}
-.chart-hd .note{font-family:var(--f-mono); font-size:.72rem; color:var(--ink-2)}
-.verdict{font-family:var(--f-mono); font-size:.7rem; text-transform:uppercase;
-  letter-spacing:.1em; padding:.22rem .55rem; border:1px solid currentColor; margin-left:auto}
-svg{display:block; width:100%; height:auto; overflow:visible}
-.legend{display:flex; flex-wrap:wrap; gap:1.4rem; margin-top:1rem;
-  font-family:var(--f-mono); font-size:.72rem; color:var(--ink-2)}
-.legend i{display:inline-block; width:1.5rem; height:.55rem; margin-right:.45rem;
-  vertical-align:middle; border:0}
-
-/* ── sections ─────────────────────────────────────────────── */
-section{padding-block:clamp(2.4rem,6vw,4rem)}
-section + section{border-top:1px solid var(--rule)}
-.eyebrow{font-family:var(--f-mono); font-size:.7rem; text-transform:uppercase;
-  letter-spacing:.14em; color:var(--ink-2); margin:0 0 .55rem}
-.h2{font-size:clamp(1.5rem,3.6vw,2.15rem); line-height:1.12; margin-bottom:.7rem}
-.intro{max-width:56ch; color:var(--ink-2); margin:0 0 1.9rem}
-
-/* ── ledger table ─────────────────────────────────────────── */
-.ledger{width:100%; border-collapse:collapse; font-family:var(--f-mono); font-size:.82rem}
-.ledger caption{text-align:left; font-family:var(--f-mono); font-size:.72rem;
-  color:var(--ink-2); padding-bottom:.6rem}
-.ledger th{text-align:right; font-weight:500; font-size:.68rem; text-transform:uppercase;
-  letter-spacing:.09em; color:var(--ink-2); padding:.5rem .7rem; border-bottom:1.5px solid var(--ink)}
-.ledger th:first-child,.ledger td:first-child{text-align:left; padding-left:0}
-.ledger td{text-align:right; padding:.55rem .7rem; border-bottom:1px solid var(--rule-2);
-  font-variant-numeric:tabular-nums}
-.ledger tbody tr:nth-child(odd){background:var(--band)}
-.ledger td:last-child,.ledger th:last-child{padding-right:0}
-.scroller{overflow-x:auto; margin-inline:calc(var(--gut) * -1); padding-inline:var(--gut)}
-.band{color:var(--ink-2); font-size:.76rem}
-
-/* ── risk bars ────────────────────────────────────────────── */
-.risks{list-style:none; margin:0; padding:0}
-.risks li{padding:.75rem 0; border-bottom:1px solid var(--rule-2);
-  display:grid; grid-template-columns:1fr auto; gap:.15rem .9rem; align-items:baseline}
-.risks .nm{font-weight:500}
-.risks .pc{font-family:var(--f-mono); font-size:.85rem; font-variant-numeric:tabular-nums}
-.risks .bar{grid-column:1/-1; height:.5rem; background:var(--rule-2); margin-top:.35rem}
-.risks .bar span{display:block; height:100%; background:var(--risk)}
-.risks .meta{grid-column:1/-1; font-family:var(--f-mono); font-size:.71rem; color:var(--ink-2)}
-
-/* ── metric grid ──────────────────────────────────────────── */
-.metrics{display:grid; grid-template-columns:repeat(auto-fit,minmax(11rem,1fr)); gap:0 1.5rem}
-.metric{padding:1rem 0; border-bottom:1px solid var(--rule-2)}
-.metric .k{font-family:var(--f-mono); font-size:.69rem; text-transform:uppercase;
-  letter-spacing:.1em; color:var(--ink-2); display:block}
-.metric .v{font-family:var(--f-mono); font-weight:600; font-size:1.45rem; display:block; margin-top:.3rem}
-.metric .n{font-size:.78rem; color:var(--ink-2); display:block; margin-top:.2rem}
-
-/* ── code ─────────────────────────────────────────────────── */
-pre{font-family:var(--f-mono); font-size:.82rem; line-height:1.7; margin:0;
-  padding:1.1rem 1.2rem; background:var(--band); border-left:2px solid var(--ink);
-  overflow-x:auto}
-pre .c{color:var(--ink-2)}
-
-/* ── callout ──────────────────────────────────────────────── */
-.callout{border:1px solid var(--rule); border-left:3px solid var(--risk);
-  padding:1.15rem 1.3rem; margin-top:2rem; max-width:62ch}
-.callout h3{font-size:.95rem; margin-bottom:.4rem}
-.callout p{margin:0; font-size:.9rem; color:var(--ink-2)}
-.callout p + p{margin-top:.55rem}
-
-/* ── footer ───────────────────────────────────────────────── */
-footer{border-top:2px solid var(--ink); padding-block:1.6rem 2.4rem;
-  font-family:var(--f-mono); font-size:.74rem; color:var(--ink-2)}
-footer .wrap{display:flex; flex-wrap:wrap; gap:.5rem 1.5rem; align-items:baseline}
-footer .spacer{margin-left:auto}
-@media (prefers-reduced-motion:no-preference){
-  .fade{animation:f .5s ease both}
-  @keyframes f{from{opacity:0; transform:translateY(4px)} to{opacity:1; transform:none}}
-}
-</style>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="static/css/core.css">
+<link rel="stylesheet" href="static/css/ui.css">
 </head>
 <body>
 
-<header class="head">
-  <div class="wrap">
-    <span class="mark">MCWP</span>
-    <span class="sub">Material cost &amp; waste prediction</span>
-    <span class="spacer"></span>
-    <a class="repo" href="https://github.com/AkurasKurasa/mcwp">github.com/AkurasKurasa/mcwp</a>
+<div class="lattice" aria-hidden="true"></div>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="brand" href="#top">
+      <span class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round">
+          <path d="M4 19 12 5l8 14z"/><path d="M8.4 15.6h7.2"/>
+        </svg>
+      </span>
+      <span class="brand-text">
+        <span class="brand-name"><em>MCWP</em></span>
+        <span class="brand-desc">
+          <b>Material Cost &amp; Waste Prediction</b> &mdash; waste, overrun risk and
+          contingency, forecast before you buy.
+        </span>
+      </span>
+    </a>
+
+    <div class="masthead-actions">
+      <span class="metric-chip">
+        <span class="ok">&bull;</span> R&sup2; 0.699
+        &middot; AUC 0.900
+      </span>
+      <span class="clock" data-clock>--:--:--</span>
+      <button class="btn icon ghost" data-theme-toggle title="Switch theme" aria-label="Switch theme">
+        <span data-theme-icon="dark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     width="16" height="16" style="flex:none"><path d="M20 14.2A8.4 8.4 0 0 1 9.8 4 8.5 8.5 0 1 0 20 14.2Z"/></svg></span>
+        <span data-theme-icon="light" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     width="16" height="16" style="flex:none"><circle cx="12" cy="12" r="4"/><path d="M12 2v2.4M12 19.6V22M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M2 12h2.4M19.6 12H22M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7"/></svg></span>
+      </button>
+<button class="btn primary sm" type="submit" form="brief-form">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     width="16" height="16" style="flex:none"><path d="M13.5 2.5 4.8 13.4h6L10.5 21.5l8.7-10.9h-6l.3-8.1Z"/></svg><span class="cta-label">Run prediction</span></button>
+    </div>
   </div>
 </header>
 
-<main>
-  <div class="wrap hero">
-    <h1 class="thesis">A budget is not a number. It's a <em>distribution</em>.</h1>
-    <p class="lede">
-      MCWP predicts material waste line by line, simulates the finished cost four
-      thousand times, and sizes the contingency that pulls overrun risk back to 10%.
-      Everything below is saved output from the trained model — pick a project.
-    </p>
+<main class="content" id="top">
 
-    <div class="tabs" role="tablist" aria-label="Sample projects"></div>
+<div class="page-head reveal">
+  <div class="titles">
+    <h1 class="display">Waste, overrun risk and the buffer you need.</h1>
+    <p class="lede">Describe the project and its materials list. Two models trained on
+      2,600 completed projects return the likely waste rate, the
+      probability the budget is exceeded, which materials carry that risk, and the contingency
+      that brings it back to 10%.</p>
+  </div>
+</div>
 
-    <div class="figs"></div>
+<!-- ═══════════════════════════════════════════════ 1. PROJECT BRIEF ══════ -->
+<section id="brief" class="section">
+  <script id="unit-map" type="application/json">{"asphalt_mix": "tonne", "ceramic_tile": "m\u00b2", "clay_brick": "1000 units", "cmu_block": "unit", "copper_piping": "m", "dimensional_lumber": "m\u00b3", "electrical_conduit": "m", "glazing_unit": "m\u00b2", "gypsum_drywall": "sheet", "interior_paint": "L", "membrane_roofing": "m\u00b2", "mineral_wool": "m\u00b2", "plywood_sheathing": "sheet", "ready_mix_concrete": "m\u00b3", "rebar_steel": "tonne", "structural_steel": "tonne"}</script>
+  <form method="post" id="brief-form" class="grid g-5-7 mb-24" style="align-items:start">
 
-    <div class="chartwrap">
-      <div class="chart-hd">
-        <h2>Simulated cost at completion</h2>
-        <span class="note">4,000 draws over waste and price dispersion</span>
-        <span class="verdict"></span>
+    <div class="panel lift reveal">
+      <div class="panel-head">
+        <div><h3>Project</h3><div class="sub">Scope, location and programme</div></div>
       </div>
-      <div class="chartbox"></div>
-      <div class="legend">
-        <span><i style="background:var(--safe)"></i>Finishes within budget</span>
-        <span><i style="background:var(--risk)"></i>Overruns</span>
-        <span><i style="background:var(--ink);height:2px"></i>Budget</span>
-        <span><i style="background:var(--ink-2);height:2px"></i>p90 — where the buffer reaches</span>
+
+      <div class="field mb-16">
+        <label>Project name</label>
+        <input class="input" name="project_name" value="Untitled Project"
+               placeholder="e.g. Harbour Point Tower">
       </div>
+
+      <div class="field mb-16">
+        <label>Project type</label>
+        <select class="input" name="project_type" id="f-type">
+          <optgroup label="Residential">
+            <option value="res_single" >
+              Residential - Single Family</option>
+            <option value="res_multi" >
+              Residential - Multi-Family</option>
+          </optgroup>
+          <optgroup label="Commercial">
+            <option value="com_office" selected>
+              Commercial - Office</option>
+            <option value="com_retail" >
+              Commercial - Retail / Fit-Out</option>
+            <option value="com_hospitality" >
+              Commercial - Hospitality</option>
+            <option value="com_industrial" >
+              Commercial - Industrial</option>
+          </optgroup>
+          <optgroup label="Other">
+            <option value="institutional" >
+              Institutional - Health / Education</option>
+            <option value="civil" >
+              Civil / Infrastructure</option>
+            <option value="renovation" >
+              Renovation / Refurbishment</option>
+          </optgroup>
+        </select>
+      </div>
+
+      <div class="field mb-16">
+        <label>Location</label>
+        <select class="input" name="region">
+          <option value="ne_metro" >
+            Northeast Metro &mdash; cost index 1.19</option>
+          <option value="mid_atlantic" >
+            Mid-Atlantic &mdash; cost index 1.07</option>
+          <option value="southeast" >
+            Southeast &mdash; cost index 0.93</option>
+          <option value="midwest" selected>
+            Midwest &mdash; cost index 0.97</option>
+          <option value="gulf" >
+            Gulf Coast &mdash; cost index 0.95</option>
+          <option value="mountain" >
+            Mountain West &mdash; cost index 1.03</option>
+          <option value="pacific_nw" >
+            Pacific Northwest &mdash; cost index 1.11</option>
+          <option value="west_coast" >
+            West Coast Metro &mdash; cost index 1.24</option>
+        </select>
+      </div>
+
+      <div class="grid g2" style="gap:16px">
+        <div class="field">
+          <label>Project size</label>
+          <div class="input-affix">
+            <input class="input" type="number" name="project_area" id="f-area"
+                   min="50" max="500000" step="10" value="9200">
+            <span class="suffix">m&sup2;</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Duration</label>
+          <div class="input-affix">
+            <input class="input" type="number" name="duration_weeks"
+                   min="2" max="260" value="40">
+            <span class="suffix">weeks</span>
+          </div>
+        </div>
+      </div>
+
+      <hr class="hr">
+
+      <div class="field">
+        <label>Material budget</label>
+        <div class="input-affix">
+          <input class="input mono" type="number" name="budget" id="f-budget" min="0" step="1000"
+                 value="2014742">
+          <span class="suffix">USD</span>
+        </div>
+        <span class="hint">
+          No budget was given, so the benchmark cost of this materials list is being used.
+        </span>
+      </div>
+    </div>
+
+    <div class="panel lift reveal">
+      <div class="panel-head">
+        <div><h3>Materials list</h3>
+          <div class="sub">What is being procured, and how much of it is needed in the works</div></div>
+        <div class="right">
+          <button type="button" class="btn sm ghost" id="load-sample">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     width="14" height="14" style="flex:none"><rect x="5" y="4.5" width="14" height="16" rx="2.4"/><path d="M9 4.5V3.4A1.4 1.4 0 0 1 10.4 2h3.2A1.4 1.4 0 0 1 15 3.4v1.1"/>
+  <path d="M9 11h6M9 15h4"/></svg> Load sample</button>
+          <button type="button" class="btn sm ghost" id="suggest-lines">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     width="14" height="14" style="flex:none"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7.7-1.8Z"/></svg> Suggest</button>
+        </div>
+      </div>
+
+      <div class="line-head">
+        <span>Material</span><span>Installed quantity</span><span></span>
+      </div>
+      <div id="lines">
+        <div class="line-row">
+          <select class="input" name="material">
+            <optgroup label="Carpentry">
+              <option value="dimensional_lumber" >Dimensional Lumber</option>
+              <option value="plywood_sheathing" >Plywood Sheathing</option>
+            </optgroup>
+            <optgroup label="Envelope">
+              <option value="clay_brick" >Clay Brick</option>
+              <option value="cmu_block" >Concrete Masonry Unit</option>
+              <option value="glazing_unit" >Insulated Glazing Unit</option>
+              <option value="mineral_wool" >Mineral Wool Insulation</option>
+              <option value="membrane_roofing" >TPO Roofing Membrane</option>
+            </optgroup>
+            <optgroup label="Finishes">
+              <option value="ceramic_tile" >Porcelain Tile</option>
+              <option value="interior_paint" >Interior Paint</option>
+            </optgroup>
+            <optgroup label="Interior">
+              <option value="gypsum_drywall" >Gypsum Wallboard</option>
+            </optgroup>
+            <optgroup label="MEP">
+              <option value="copper_piping" >Copper Piping</option>
+              <option value="electrical_conduit" >Electrical Conduit</option>
+            </optgroup>
+            <optgroup label="Sitework">
+              <option value="asphalt_mix" >Hot-Mix Asphalt</option>
+            </optgroup>
+            <optgroup label="Structural">
+              <option value="ready_mix_concrete" selected>Ready-Mix Concrete</option>
+              <option value="rebar_steel" >Reinforcing Steel</option>
+              <option value="structural_steel" >Structural Steel</option>
+            </optgroup>
+          </select>
+          <div class="input-affix">
+            <input class="input mono" type="number" name="quantity" min="0.1" step="0.1"
+                   value="2852.0">
+            <span class="suffix">m³</span>
+          </div>
+          <button type="button" class="btn icon ghost line-drop" title="Remove">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     width="15" height="15" style="flex:none"><path d="M4 7h16M9.5 7V5.2A1.2 1.2 0 0 1 10.7 4h2.6a1.2 1.2 0 0 1 1.2 1.2V7"/>
+  <path d="M6.4 7l.8 12.1A1.5 1.5 0 0 0 8.7 20.5h6.6a1.5 1.5 0 0 0 1.5-1.4L17.6 7"/></svg></button>
+        </div>
+        <div class="line-row">
+          <select class="input" name="material">
+            <optgroup label="Carpentry">
+              <option value="dimensional_lumber" >Dimensional Lumber</option>
+              <option value="plywood_sheathing" >Plywood Sheathing</option>
+            </optgroup>
+            <optgroup label="Envelope">
+              <option value="clay_brick" >Clay Brick</option>
+              <option value="cmu_block" >Concrete Masonry Unit</option>
+              <option value="glazing_unit" >Insulated Glazing Unit</option>
+              <option value="mineral_wool" >Mineral Wool Insulation</option>
+              <option value="membrane_roofing" >TPO Roofing Membrane</option>
+            </optgroup>
+            <optgroup label="Finishes">
+              <option value="ceramic_tile" >Porcelain Tile</option>
+              <option value="interior_paint" >Interior Paint</option>
+            </optgroup>
+            <optgroup label="Interior">
+              <option value="gypsum_drywall" >Gypsum Wallboard</option>
+            </optgroup>
+            <optgroup label="MEP">
+              <option value="copper_piping" >Copper Piping</option>
+              <option value="electrical_conduit" >Electrical Conduit</option>
+            </optgroup>
+            <optgroup label="Sitework">
+              <option value="asphalt_mix" >Hot-Mix Asphalt</option>
+            </optgroup>
+            <optgroup label="Structural">
+              <option value="ready_mix_concrete" >Ready-Mix Concrete</option>
+              <option value="rebar_steel" selected>Reinforcing Steel</option>
+              <option value="structural_steel" >Structural Steel</option>
+            </optgroup>
+          </select>
+          <div class="input-affix">
+            <input class="input mono" type="number" name="quantity" min="0.1" step="0.1"
+                   value="257.6">
+            <span class="suffix">tonne</span>
+          </div>
+          <button type="button" class="btn icon ghost line-drop" title="Remove">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     width="15" height="15" style="flex:none"><path d="M4 7h16M9.5 7V5.2A1.2 1.2 0 0 1 10.7 4h2.6a1.2 1.2 0 0 1 1.2 1.2V7"/>
+  <path d="M6.4 7l.8 12.1A1.5 1.5 0 0 0 8.7 20.5h6.6a1.5 1.5 0 0 0 1.5-1.4L17.6 7"/></svg></button>
+        </div>
+        <div class="line-row">
+          <select class="input" name="material">
+            <optgroup label="Carpentry">
+              <option value="dimensional_lumber" >Dimensional Lumber</option>
+              <option value="plywood_sheathing" >Plywood Sheathing</option>
+            </optgroup>
+            <optgroup label="Envelope">
+              <option value="clay_brick" >Clay Brick</option>
+              <option value="cmu_block" >Concrete Masonry Unit</option>
+              <option value="glazing_unit" >Insulated Glazing Unit</option>
+              <option value="mineral_wool" >Mineral Wool Insulation</option>
+              <option value="membrane_roofing" >TPO Roofing Membrane</option>
+            </optgroup>
+            <optgroup label="Finishes">
+              <option value="ceramic_tile" >Porcelain Tile</option>
+              <option value="interior_paint" >Interior Paint</option>
+            </optgroup>
+            <optgroup label="Interior">
+              <option value="gypsum_drywall" >Gypsum Wallboard</option>
+            </optgroup>
+            <optgroup label="MEP">
+              <option value="copper_piping" >Copper Piping</option>
+              <option value="electrical_conduit" >Electrical Conduit</option>
+            </optgroup>
+            <optgroup label="Sitework">
+              <option value="asphalt_mix" >Hot-Mix Asphalt</option>
+            </optgroup>
+            <optgroup label="Structural">
+              <option value="ready_mix_concrete" >Ready-Mix Concrete</option>
+              <option value="rebar_steel" >Reinforcing Steel</option>
+              <option value="structural_steel" selected>Structural Steel</option>
+            </optgroup>
+          </select>
+          <div class="input-affix">
+            <input class="input mono" type="number" name="quantity" min="0.1" step="0.1"
+                   value="404.8">
+            <span class="suffix">tonne</span>
+          </div>
+          <button type="button" class="btn icon ghost line-drop" title="Remove">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     width="15" height="15" style="flex:none"><path d="M4 7h16M9.5 7V5.2A1.2 1.2 0 0 1 10.7 4h2.6a1.2 1.2 0 0 1 1.2 1.2V7"/>
+  <path d="M6.4 7l.8 12.1A1.5 1.5 0 0 0 8.7 20.5h6.6a1.5 1.5 0 0 0 1.5-1.4L17.6 7"/></svg></button>
+        </div>
+        <div class="line-row">
+          <select class="input" name="material">
+            <optgroup label="Carpentry">
+              <option value="dimensional_lumber" >Dimensional Lumber</option>
+              <option value="plywood_sheathing" >Plywood Sheathing</option>
+            </optgroup>
+            <optgroup label="Envelope">
+              <option value="clay_brick" >Clay Brick</option>
+              <option value="cmu_block" selected>Concrete Masonry Unit</option>
+              <option value="glazing_unit" >Insulated Glazing Unit</option>
+              <option value="mineral_wool" >Mineral Wool Insulation</option>
+              <option value="membrane_roofing" >TPO Roofing Membrane</option>
+            </optgroup>
+            <optgroup label="Finishes">
+              <option value="ceramic_tile" >Porcelain Tile</option>
+              <option value="interior_paint" >Interior Paint</option>
+            </optgroup>
+            <optgroup label="Interior">
+              <option value="gypsum_drywall" >Gypsum Wallboard</option>
+            </optgroup>
+            <optgroup label="MEP">
+              <option value="copper_piping" >Copper Piping</option>
+              <option value="electrical_conduit" >Electrical Conduit</option>
+            </optgroup>
+            <optgroup label="Sitework">
+              <option value="asphalt_mix" >Hot-Mix Asphalt</option>
+            </optgroup>
+            <optgroup label="Structural">
+              <option value="ready_mix_concrete" >Ready-Mix Concrete</option>
+              <option value="rebar_steel" >Reinforcing Steel</option>
+              <option value="structural_steel" >Structural Steel</option>
+            </optgroup>
+          </select>
+          <div class="input-affix">
+            <input class="input mono" type="number" name="quantity" min="0.1" step="0.1"
+                   value="38640.0">
+            <span class="suffix">unit</span>
+          </div>
+          <button type="button" class="btn icon ghost line-drop" title="Remove">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     width="15" height="15" style="flex:none"><path d="M4 7h16M9.5 7V5.2A1.2 1.2 0 0 1 10.7 4h2.6a1.2 1.2 0 0 1 1.2 1.2V7"/>
+  <path d="M6.4 7l.8 12.1A1.5 1.5 0 0 0 8.7 20.5h6.6a1.5 1.5 0 0 0 1.5-1.4L17.6 7"/></svg></button>
+        </div>
+        <div class="line-row">
+          <select class="input" name="material">
+            <optgroup label="Carpentry">
+              <option value="dimensional_lumber" >Dimensional Lumber</option>
+              <option value="plywood_sheathing" >Plywood Sheathing</option>
+            </optgroup>
+            <optgroup label="Envelope">
+              <option value="clay_brick" >Clay Brick</option>
+              <option value="cmu_block" >Concrete Masonry Unit</option>
+              <option value="glazing_unit" selected>Insulated Glazing Unit</option>
+              <option value="mineral_wool" >Mineral Wool Insulation</option>
+              <option value="membrane_roofing" >TPO Roofing Membrane</option>
+            </optgroup>
+            <optgroup label="Finishes">
+              <option value="ceramic_tile" >Porcelain Tile</option>
+              <option value="interior_paint" >Interior Paint</option>
+            </optgroup>
+            <optgroup label="Interior">
+              <option value="gypsum_drywall" >Gypsum Wallboard</option>
+            </optgroup>
+            <optgroup label="MEP">
+              <option value="copper_piping" >Copper Piping</option>
+              <option value="electrical_conduit" >Electrical Conduit</option>
+            </optgroup>
+            <optgroup label="Sitework">
+              <option value="asphalt_mix" >Hot-Mix Asphalt</option>
+            </optgroup>
+            <optgroup label="Structural">
+              <option value="ready_mix_concrete" >Ready-Mix Concrete</option>
+              <option value="rebar_steel" >Reinforcing Steel</option>
+              <option value="structural_steel" >Structural Steel</option>
+            </optgroup>
+          </select>
+          <div class="input-affix">
+            <input class="input mono" type="number" name="quantity" min="0.1" step="0.1"
+                   value="1748.0">
+            <span class="suffix">m²</span>
+          </div>
+          <button type="button" class="btn icon ghost line-drop" title="Remove">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     width="15" height="15" style="flex:none"><path d="M4 7h16M9.5 7V5.2A1.2 1.2 0 0 1 10.7 4h2.6a1.2 1.2 0 0 1 1.2 1.2V7"/>
+  <path d="M6.4 7l.8 12.1A1.5 1.5 0 0 0 8.7 20.5h6.6a1.5 1.5 0 0 0 1.5-1.4L17.6 7"/></svg></button>
+        </div>
+      </div>
+
+      <button type="button" class="btn ghost block mt-16" id="add-line">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     width="16" height="16" style="flex:none"><path d="M12 5v14M5 12h14"/></svg> Add material</button>
+
+      <hr class="hr">
+      <div class="row gap-12 wrap">
+        <span class="badge">5 materials</span>
+        <span class="badge">$1.96M procurement</span>
+        <button class="btn primary ml-auto" type="submit">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     width="16" height="16" style="flex:none"><path d="M13.5 2.5 4.8 13.4h6L10.5 21.5l8.7-10.9h-6l.3-8.1Z"/></svg> Run prediction</button>
+      </div>
+    </div>
+  </form>
+
+  <div class="stale-note panel tight reveal" id="stale" hidden>
+    <div class="row gap-12">
+      <span class="badge amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     width="12" height="12" style="flex:none"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg> Inputs changed</span>
+      <span class="small muted">The headline figures below are live. Run the prediction to refresh
+        the material breakdown, risk ranking and actions.</span>
+      <button class="btn sm primary ml-auto" type="submit" form="brief-form">Re-run</button>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ 2. PREDICTION ═════ -->
+<section id="forecast" class="section">
+  <div class="section-title reveal">
+    <h2>Prediction</h2>
+    <span class="dim small">Commercial - Office &middot; Midwest
+      &middot; 9,200 m&sup2; over 40 weeks</span>
+  </div>
+
+  <div class="grid g4 mb-24">
+    <div class="panel lift kpi reveal">
+      <div class="cap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     width="16" height="16" style="flex:none"><path d="M4 17a9 9 0 1 1 16 0"/><path d="M12 17l4-5"/><circle cx="12" cy="17" r="1.4"/></svg> Likely material waste</div>
+      <div class="val"><span data-out="waste">4.23</span><span class="unit">%</span></div>
+      <div class="foot">
+        <span class="badge violet">80% band
+          <b data-out="waste-band">2.53–5.9%</b></span>
+      </div>
+      <div class="tiny dim mt-8">benchmark 4.12% &middot;
+        <span data-out="wasted-value">$83,213</span> of material discarded</div>
+    </div>
+
+    <div class="panel lift kpi reveal">
+      <div class="cap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     width="16" height="16" style="flex:none"><path d="M12 4.5 2.8 20h18.4L12 4.5Z"/><path d="M12 10v4M12 17h.01"/></svg> Cost overrun risk</div>
+      <div class="val" style="color:var(--tone-2)">
+        <span data-out="overrun">44.1</span><span class="unit">%</span></div>
+      <div class="foot">
+        <span class="badge amber" data-out="verdict">
+          Overrun plausible</span>
+      </div>
+      <div class="tiny dim mt-8">probability the material budget is exceeded</div>
+    </div>
+
+    <div class="panel lift kpi reveal">
+      <div class="cap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     width="16" height="16" style="flex:none"><path d="M12 3 4.5 6v6c0 4.6 3.1 8 7.5 9.2 4.4-1.2 7.5-4.6 7.5-9.2V6L12 3Z"/><path d="M9 12.2l2.2 2.2L15.2 10"/></svg> High-risk materials</div>
+      <div class="val"><span data-out="risk-count">2</span>
+        <span class="unit">of 5</span></div>
+      <div class="foot">
+        <span class="badge rose">
+          Insulated Glazing Unit</span>
+      </div>
+      <div class="tiny dim mt-8">0 more on watch</div>
+    </div>
+
+    <div class="panel lift kpi reveal">
+      <div class="cap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     width="16" height="16" style="flex:none"><ellipse cx="12" cy="6.4" rx="7.5" ry="3.2"/><path d="M4.5 6.4v5c0 1.8 3.4 3.2 7.5 3.2s7.5-1.4 7.5-3.2v-5"/>
+  <path d="M4.5 11.4v5c0 1.8 3.4 3.2 7.5 3.2s7.5-1.4 7.5-3.2v-5"/></svg> Recommended buffer</div>
+      <div class="val"><span data-out="buffer">$185.0K</span></div>
+      <div class="foot">
+        <span class="badge mint"><span data-out="buffer-pct">9.18</span>%
+          of budget</span>
+      </div>
+      <div class="tiny dim mt-8">holds overrun risk at 10%</div>
     </div>
   </div>
 
-  <section class="wrap">
-    <p class="eyebrow">Per material</p>
-    <h2 class="h2">What each line is predicted to waste</h2>
-    <p class="intro">
-      The regressor predicts a waste rate for every material line, with an 80%
-      interval around it. Benchmark is the trade's customary allowance — the
-      figure an estimator would otherwise pencil in.
-    </p>
-    <div class="scroller">
-      <table class="ledger">
-        <caption>Quantities as entered; waste and cost as predicted.</caption>
-        <thead>
-          <tr>
-            <th>Material</th><th>Quantity</th><th>Predicted waste</th>
-            <th>80% band</th><th>Benchmark</th><th>Wasted value</th><th>Share of cost</th>
-          </tr>
-        </thead>
-        <tbody id="lines"></tbody>
-      </table>
+  <div class="grid g-7-5 mb-24">
+    <div class="panel lift reveal">
+      <div class="panel-head">
+        <div><h3>Where the outturn lands</h3>
+          <div class="sub">4,000 simulations over the forecast's own residual
+            spread and regional price dispersion</div></div>
+      </div>
+      <div class="chart" id="dist-chart"></div>
+      <div class="legend">
+        <span class="item"><span class="swatch" style="background:var(--tone-4)"></span>
+          Simulated outturn</span>
+        <span class="item"><span class="swatch" style="background:var(--text)"></span>
+          Budget <b data-out="leg-budget">$2,014,742</b></span>
+        <span class="item"><span class="swatch" style="background:var(--tone-3)"></span>
+          Median <b data-out="leg-p50">$2,011,162</b></span>
+        <span class="item"><span class="swatch" style="background:var(--tone-2)"></span>
+          P90 <b data-out="leg-p90">$2,199,738</b></span>
+      </div>
     </div>
-  </section>
 
-  <section class="wrap">
-    <p class="eyebrow">Attribution</p>
-    <h2 class="h2">Where the risk actually sits</h2>
-    <p class="intro">
-      Ranked by contribution to the variance of the total, not by how much each
-      line costs. A cheap material that moves unpredictably outranks an expensive
-      one that doesn't.
-    </p>
-    <ul class="risks" id="risks"></ul>
-  </section>
-
-  <section class="wrap">
-    <p class="eyebrow">The model</p>
-    <h2 class="h2">Measured on held-out projects</h2>
-    <p class="intro">
-      Two gradient-boosted models: a regressor for waste per line, a classifier
-      for overrun per project. Split by project, so no project appears on both
-      sides of the line.
-    </p>
-    <div class="metrics" id="metrics"></div>
-
-    <div class="callout">
-      <h3>The band is calibrated, not decorative</h3>
-      <p id="cal-note"></p>
-      <p>
-        The contingency is the distance from the budget to the 90th percentile of
-        the simulated cost — which is why it moves when the distribution's shape
-        moves, not just its centre.
-      </p>
+    <div class="panel lift reveal">
+      <div class="panel-head">
+        <div><h3>Overrun probability</h3><div class="sub">Gradient-boosted classifier</div></div>
+      </div>
+      <div class="chart" id="risk-gauge" style="max-width:230px;margin:4px auto 0"></div>
+      <div class="center">
+        <span class="badge amber" data-out="verdict2">
+          Overrun plausible</span>
+      </div>
+      <hr class="hr">
+      <div class="stack gap-12 small">
+        <div class="row"><span class="muted">Expected outturn</span>
+          <b class="ml-auto mono" data-out="expected">$2,016,746</b></div>
+        <div class="row"><span class="muted">Stated budget</span>
+          <b class="ml-auto mono" data-out="stated">$2,014,742</b></div>
+        <div class="row"><span class="muted">Headroom</span>
+          <b class="ml-auto mono c-rose"
+             data-out="headroom">-$2,004</b></div>
+        <div class="row"><span class="muted">Simulation agrees at</span>
+          <b class="ml-auto mono" data-out="simulated">48.9%</b></div>
+      </div>
     </div>
-  </section>
+  </div>
+</section>
 
-  <section class="wrap">
-    <p class="eyebrow">Run it</p>
-    <h2 class="h2">The live tool needs a Python process</h2>
-    <p class="intro">
-      This page is static. The predictor itself is a Flask app that loads the
-      trained model and runs the simulation per request — so it runs locally, or
-      on any host that executes Python.
-    </p>
-<pre><span class="c"># clone and run — first launch fits the models, about 50 seconds</span>
-git clone https://github.com/AkurasKurasa/mcwp.git
-cd mcwp
-python -m pip install -r requirements.txt
-python app.py
-<span class="c"># http://127.0.0.1:5000</span></pre>
-    <div class="callout">
-      <h3>Why the predictor isn't running on this page</h3>
-      <p>
-        GitHub Pages serves files; it does not run processes. There is no Python
-        here to load the model or run the Monte Carlo, so the numbers above are a
-        saved run rather than a live one.
-      </p>
-      <p>
-        The repository ships a <span class="mono">render.yaml</span> and a
-        <span class="mono">Procfile</span>. Point a Python host at either and the
-        tool works exactly as it does locally.
-      </p>
+<!-- ══════════════════════════════════════════════ 3. BUDGET & BUFFER ═════ -->
+<section id="budget" class="section">
+  <div class="section-title reveal">
+    <h2>Budget &amp; buffer</h2>
+    <span class="dim small">What to carry so the number holds</span>
+  </div>
+
+  <div class="grid g-8-4 mb-24">
+    <div class="panel lift reveal">
+      <div class="panel-head">
+        <div><h3>Budget ladder</h3>
+          <div class="sub">Benchmark, forecast, stated budget and the recommended working budget</div></div>
+      </div>
+
+      <div class="waterfall">
+        <div class="wf-row">
+          <span class="lab" title="List price with industry baseline waste">Benchmark cost</span>
+          <div class="bar-wrap">
+            <div class="b" data-fill="91.59"
+                 style="background:var(--tone-5)"></div>
+          </div>
+          <span class="amt">$2,014,742</span>
+        </div>
+        <div class="wf-row">
+          <span class="lab" title="What the model expects this package to cost">Forecast outturn</span>
+          <div class="bar-wrap">
+            <div class="b" data-fill="91.68"
+                 style="background:var(--tone-4)"></div>
+          </div>
+          <span class="amt">$2,016,746</span>
+        </div>
+        <div class="wf-row">
+          <span class="lab" title="What you told us you have">Stated budget</span>
+          <div class="bar-wrap">
+            <div class="b" data-fill="91.59"
+                 style="background:var(--tone-3)"></div>
+          </div>
+          <span class="amt">$2,014,742</span>
+        </div>
+        <div class="wf-row">
+          <span class="lab" title="Only 1 run in 10 finishes above this">P90 outturn</span>
+          <div class="bar-wrap">
+            <div class="b" data-fill="100.0"
+                 style="background:var(--tone-2)"></div>
+          </div>
+          <span class="amt">$2,199,738</span>
+        </div>
+        <div class="wf-row">
+          <span class="lab" title="Budget plus the contingency that holds risk at target">Recommended budget</span>
+          <div class="bar-wrap">
+            <div class="b" data-fill="100.0"
+                 style="background:var(--tone-1)"></div>
+          </div>
+          <span class="amt">$2,199,738</span>
+        </div>
+      </div>
     </div>
-  </section>
+
+    <div class="panel lift reveal" style="border-color:color-mix(in srgb,var(--mint) 35%,transparent)">
+      <div class="row gap-8 mb-16">
+        <span class="badge mint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     width="12" height="12" style="flex:none"><path d="M12 3 4.5 6v6c0 4.6 3.1 8 7.5 9.2 4.4-1.2 7.5-4.6 7.5-9.2V6L12 3Z"/><path d="M9 12.2l2.2 2.2L15.2 10"/></svg> Contingency</span>
+      </div>
+      <div class="kpi" style="min-height:auto">
+        <div class="val c-mint">$184,996</div>
+        <div class="foot dim">9.18% of the stated budget</div>
+      </div>
+      <hr class="hr">
+      <div class="stack gap-12 small">
+        <div class="row"><span class="muted">Working budget</span>
+          <b class="ml-auto mono">$2,199,738</b></div>
+        <div class="row"><span class="muted">Residual risk</span>
+          <b class="ml-auto mono">10%</b></div>
+      </div>
+      <hr class="hr">
+      <div class="stat-strip" style="justify-content:space-between">
+        <div class="s"><div class="k">P10</div><div class="v">$1.84M</div></div>
+        <div class="s"><div class="k">P50</div><div class="v">$2.01M</div></div>
+        <div class="s"><div class="k">P90</div><div class="v">$2.20M</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════ 4. MATERIALS AT RISK ══════ -->
+<section id="materials" class="section">
+  <div class="section-title reveal">
+    <h2>Materials at risk</h2>
+    <span class="dim small">Ranked by money at stake, forecast uncertainty and price exposure</span>
+  </div>
+
+  <div class="grid g-7-5 mb-24">
+    <div class="panel lift flush reveal">
+      <div class="panel-head" style="padding:22px 22px 0;margin-bottom:14px">
+        <div><h3>Line-by-line forecast</h3>
+          <div class="sub">Order quantities already include the predicted waste</div></div>
+      </div>
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr>
+            <th>Material</th><th class="right">Installed</th><th class="right">Order</th>
+            <th class="right">Waste</th><th class="right">Wasted value</th><th class="right">Line cost</th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td>
+                <div class="row gap-8">
+                  <span class="swatch" style="background:var(--tone-1)"></span>
+                  <div class="cell-title">
+                    <b>Ready-Mix Concrete</b>
+                    <span>21.8% of value &middot; $143.56/m³</span>
+                  </div>
+                </div>
+              </td>
+              <td class="right muted">2,852</td>
+              <td class="right">3,012</td>
+              <td class="right strong">
+                5.31%
+                <div class="tiny dim">3.26–7.33</div>
+              </td>
+              <td class="right c-rose">$22,979</td>
+              <td class="right">$465,725</td>
+            </tr>
+            <tr>
+              <td>
+                <div class="row gap-8">
+                  <span class="swatch" style="background:var(--tone-2)"></span>
+                  <div class="cell-title">
+                    <b>Reinforcing Steel</b>
+                    <span>13.1% of value &middot; $955.45/tonne</span>
+                  </div>
+                </div>
+              </td>
+              <td class="right muted">258</td>
+              <td class="right">268</td>
+              <td class="right strong">
+                3.91%
+                <div class="tiny dim">2.49–5.37</div>
+              </td>
+              <td class="right c-rose">$10,006</td>
+              <td class="right">$258,932</td>
+            </tr>
+            <tr>
+              <td>
+                <div class="row gap-8">
+                  <span class="swatch" style="background:var(--tone-3)"></span>
+                  <div class="cell-title">
+                    <b>Structural Steel</b>
+                    <span>30.6% of value &middot; $1,421.05/tonne</span>
+                  </div>
+                </div>
+              </td>
+              <td class="right muted">405</td>
+              <td class="right">416</td>
+              <td class="right strong">
+                2.71%
+                <div class="tiny dim">1.5–3.73</div>
+              </td>
+              <td class="right c-rose">$16,028</td>
+              <td class="right">$595,620</td>
+            </tr>
+            <tr>
+              <td>
+                <div class="row gap-8">
+                  <span class="swatch" style="background:var(--tone-3)"></span>
+                  <div class="cell-title">
+                    <b>Concrete Masonry Unit</b>
+                    <span>6.3% of value &middot; $3.06/unit</span>
+                  </div>
+                </div>
+              </td>
+              <td class="right muted">38,640</td>
+              <td class="right">41,236</td>
+              <td class="right strong">
+                6.3%
+                <div class="tiny dim">3.73–8.64</div>
+              </td>
+              <td class="right c-rose">$7,932</td>
+              <td class="right">$131,079</td>
+            </tr>
+            <tr>
+              <td>
+                <div class="row gap-8">
+                  <span class="swatch" style="background:var(--tone-4)"></span>
+                  <div class="cell-title">
+                    <b>Insulated Glazing Unit</b>
+                    <span>28.2% of value &middot; $302.64/m²</span>
+                  </div>
+                </div>
+              </td>
+              <td class="right muted">1,748</td>
+              <td class="right">1,835</td>
+              <td class="right strong">
+                4.73%
+                <div class="tiny dim">2.84–6.77</div>
+              </td>
+              <td class="right c-rose">$26,268</td>
+              <td class="right">$565,390</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel lift reveal">
+      <div class="panel-head">
+        <div><h3>Risk ranking</h3><div class="sub">Score out of 100</div></div>
+      </div>
+      <div class="stack gap-16">
+        <div class="risk-row">
+          <div class="row gap-8 mb-8">
+            <span class="swatch" style="background:var(--tone-4)"></span>
+            <b class="small">Insulated Glazing Unit</b>
+            <span class="badge rose ml-auto">
+              high · 65</span>
+          </div>
+          <div class="rail">
+            <div class="fill" data-fill="65"
+                 style="background:var(--tone-4)"></div>
+          </div>
+          <div class="tiny dim mt-8">drives 29% of the cost variance · damage-prone in handling · 56-day lead time</div>
+        </div>
+        <div class="risk-row">
+          <div class="row gap-8 mb-8">
+            <span class="swatch" style="background:var(--tone-3)"></span>
+            <b class="small">Structural Steel</b>
+            <span class="badge rose ml-auto">
+              high · 63</span>
+          </div>
+          <div class="rail">
+            <div class="fill" data-fill="63"
+                 style="background:var(--tone-3)"></div>
+          </div>
+          <div class="tiny dim mt-8">drives 54% of the cost variance · volatile unit price · 31% of package value · 45-day lead time</div>
+        </div>
+        <div class="risk-row">
+          <div class="row gap-8 mb-8">
+            <span class="swatch" style="background:var(--tone-1)"></span>
+            <b class="small">Ready-Mix Concrete</b>
+            <span class="badge mint ml-auto">
+              low · 32</span>
+          </div>
+          <div class="rail">
+            <div class="fill" data-fill="32"
+                 style="background:var(--tone-1)"></div>
+          </div>
+          <div class="tiny dim mt-8">stable and inside benchmark</div>
+        </div>
+        <div class="risk-row">
+          <div class="row gap-8 mb-8">
+            <span class="swatch" style="background:var(--tone-2)"></span>
+            <b class="small">Reinforcing Steel</b>
+            <span class="badge mint ml-auto">
+              low · 25</span>
+          </div>
+          <div class="rail">
+            <div class="fill" data-fill="25"
+                 style="background:var(--tone-2)"></div>
+          </div>
+          <div class="tiny dim mt-8">volatile unit price</div>
+        </div>
+        <div class="risk-row">
+          <div class="row gap-8 mb-8">
+            <span class="swatch" style="background:var(--tone-3)"></span>
+            <b class="small">Concrete Masonry Unit</b>
+            <span class="badge mint ml-auto">
+              low · 12</span>
+          </div>
+          <div class="rail">
+            <div class="fill" data-fill="12"
+                 style="background:var(--tone-3)"></div>
+          </div>
+          <div class="tiny dim mt-8">stable and inside benchmark</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ 5. WHAT TO DO ══════ -->
+<section id="actions" class="section">
+  <div class="section-title reveal">
+    <h2>What to do</h2>
+    <span class="dim small">Ordered by what moves the number most</span>
+  </div>
+
+  <div class="grid g2 mb-24">
+    <div class="panel lift reveal advice violet">
+      <div class="row gap-12 mb-8">
+        <span class="rank">1</span>
+        <b>Carry a 9.2% contingency</b>
+      </div>
+      <p class="small muted" style="margin:0">A buffer of $184,996 takes the working budget to $2,199,738 and holds overrun risk at 10%.</p>
+    </div>
+    <div class="panel lift reveal advice amber">
+      <div class="row gap-12 mb-8">
+        <span class="rank">2</span>
+        <b>Put Insulated Glazing Unit under tighter control</b>
+      </div>
+      <p class="small muted" style="margin:0">It carries 29% of the cost variance and $26,268 of forecast waste. Tighten the takeoff, sequence deliveries and fix the price early.</p>
+    </div>
+    <div class="panel lift reveal advice cyan">
+      <div class="row gap-12 mb-8">
+        <span class="rank">3</span>
+        <b>Lock the long-lead items now</b>
+      </div>
+      <p class="small muted" style="margin:0">Structural Steel, Insulated Glazing Unit run 56 days or more. Ordering these late is the usual route into an overrun.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════ 6. MODEL CARD ════ -->
+<section id="model" class="section">
+  <div class="section-title reveal">
+    <h2>Model card</h2>
+    <span class="dim small">What was trained, on what, and how well it does</span>
+  </div>
+
+  <div class="grid g4 mb-24">
+    <div class="panel lift kpi reveal" style="min-height:126px"><div class="cap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     width="16" height="16" style="flex:none"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.6"/><circle cx="12" cy="12" r="1"/></svg> Waste R&sup2;</div>
+      <div class="val">0.699</div>
+      <div class="foot dim">MAE 1.89 pp</div>
+    </div>
+    <div class="panel lift kpi reveal" style="min-height:126px"><div class="cap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     width="16" height="16" style="flex:none"><path d="M12 3 4.5 6v6c0 4.6 3.1 8 7.5 9.2 4.4-1.2 7.5-4.6 7.5-9.2V6L12 3Z"/><path d="M9 12.2l2.2 2.2L15.2 10"/></svg> Overrun AUC</div>
+      <div class="val">0.900</div>
+      <div class="foot dim">Brier 0.127</div>
+    </div>
+    <div class="panel lift kpi reveal" style="min-height:126px"><div class="cap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     width="16" height="16" style="flex:none"><path d="M4 17a9 9 0 1 1 16 0"/><path d="M12 17l4-5"/><circle cx="12" cy="17" r="1.4"/></svg> Band coverage</div>
+      <div class="val">80.6<span class="unit">%</span></div>
+      <div class="foot dim">nominal 80%</div>
+    </div>
+    <div class="panel lift kpi reveal" style="min-height:126px"><div class="cap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     width="16" height="16" style="flex:none"><path d="M20.5 8.5v7l-8.5 5-8.5-5v-7l8.5-5 8.5 5Z"/><path d="M3.5 8.5 12 13.5l8.5-5M12 13.5v7"/></svg> Archive</div>
+      <div class="val">2.60K</div>
+      <div class="foot dim">14,349 material lines</div>
+    </div>
+  </div>
+
+  <div class="grid g3">
+
+        <div class="panel lift reveal">
+      <div class="panel-head"><div><h3>What drives the waste forecast</h3>
+        <div class="sub">Permutation importance</div></div></div>
+
+      <div class="lead-driver">
+        <div class="row gap-8">
+          <b>Material</b>
+          <span class="ml-auto mono">92.4%</span>
+        </div>
+        <div class="tiny dim mt-8">Dominant by a wide margin &mdash; it sets the baseline
+          the rest only modulate.</div>
+      </div>
+
+      <div class="tiny dim mt-16 mb-16" style="letter-spacing:.12em;text-transform:uppercase">
+        Beyond that, ranked among themselves</div>
+      <div class="meters">
+        <div class="meter">
+          <div class="top"><span class="name">Project Type</span>
+            <span class="value">6.11%</span></div>
+          <div class="rail"><div class="fill" data-fill="100.0"
+               style="background:var(--tone-2)"></div></div>
+        </div>
+        <div class="meter">
+          <div class="top"><span class="name">Project Size</span>
+            <span class="value">0.59%</span></div>
+          <div class="rail"><div class="fill" data-fill="9.7"
+               style="background:var(--tone-2)"></div></div>
+        </div>
+        <div class="meter">
+          <div class="top"><span class="name">Budget vs Benchmark</span>
+            <span class="value">0.42%</span></div>
+          <div class="rail"><div class="fill" data-fill="6.9"
+               style="background:var(--tone-2)"></div></div>
+        </div>
+        <div class="meter">
+          <div class="top"><span class="name">Duration</span>
+            <span class="value">0.29%</span></div>
+          <div class="rail"><div class="fill" data-fill="4.8"
+               style="background:var(--tone-2)"></div></div>
+        </div>
+        <div class="meter">
+          <div class="top"><span class="name">Materials in Package</span>
+            <span class="value">0.11%</span></div>
+          <div class="rail"><div class="fill" data-fill="1.8"
+               style="background:var(--tone-2)"></div></div>
+        </div>
+        <div class="meter">
+          <div class="top"><span class="name">Share of Package Value</span>
+            <span class="value">0.04%</span></div>
+          <div class="rail"><div class="fill" data-fill="0.6"
+               style="background:var(--tone-2)"></div></div>
+        </div>
+      </div>
+    </div>
+
+        <div class="panel lift reveal">
+      <div class="panel-head"><div><h3>What drives overrun risk</h3>
+        <div class="sub">Permutation importance</div></div></div>
+
+      <div class="lead-driver">
+        <div class="row gap-8">
+          <b>Budget vs Benchmark</b>
+          <span class="ml-auto mono">96.8%</span>
+        </div>
+        <div class="tiny dim mt-8">Dominant by a wide margin &mdash; it sets the baseline
+          the rest only modulate.</div>
+      </div>
+
+      <div class="tiny dim mt-16 mb-16" style="letter-spacing:.12em;text-transform:uppercase">
+        Beyond that, ranked among themselves</div>
+      <div class="meters">
+        <div class="meter">
+          <div class="top"><span class="name">Location</span>
+            <span class="value">0.90%</span></div>
+          <div class="rail"><div class="fill" data-fill="100.0"
+               style="background:var(--tone-3)"></div></div>
+        </div>
+        <div class="meter">
+          <div class="top"><span class="name">Forecast Waste</span>
+            <span class="value">0.61%</span></div>
+          <div class="rail"><div class="fill" data-fill="67.5"
+               style="background:var(--tone-3)"></div></div>
+        </div>
+        <div class="meter">
+          <div class="top"><span class="name">Mix Concentration</span>
+            <span class="value">0.53%</span></div>
+          <div class="rail"><div class="fill" data-fill="59.1"
+               style="background:var(--tone-3)"></div></div>
+        </div>
+        <div class="meter">
+          <div class="top"><span class="name">Build Rate (m²/week)</span>
+            <span class="value">0.48%</span></div>
+          <div class="rail"><div class="fill" data-fill="53.3"
+               style="background:var(--tone-3)"></div></div>
+        </div>
+        <div class="meter">
+          <div class="top"><span class="name">Fragile Material Share</span>
+            <span class="value">0.25%</span></div>
+          <div class="rail"><div class="fill" data-fill="27.1"
+               style="background:var(--tone-3)"></div></div>
+        </div>
+        <div class="meter">
+          <div class="top"><span class="name">Project Size</span>
+            <span class="value">0.21%</span></div>
+          <div class="rail"><div class="fill" data-fill="23.8"
+               style="background:var(--tone-3)"></div></div>
+        </div>
+      </div>
+    </div>
+
+
+    <div class="panel lift reveal">
+      <div class="panel-head"><div><h3>Is the probability honest?</h3>
+        <div class="sub">Predicted risk against observed overrun rate</div></div></div>
+      <div class="chart" id="reliability-chart"></div>
+      <p class="tiny dim mt-8" style="margin:0">Points on the dashed line mean that when the model
+        says 40%, roughly 40% of those projects really did overrun.</p>
+    </div>
+  </div>
+
+</section>
 </main>
 
-<footer>
-  <div class="wrap">
-    <span>MCWP — material cost &amp; waste prediction</span>
-    <span class="spacer"></span>
-    <span id="corpus"></span>
-  </div>
-</footer>
-
-<script src="data.js"></script>
+<script src="static/js/charts.js"></script>
+<!-- MCWP in the browser: the model, the engine, and the /api shim -->
+<script src="model.js"></script>
+<script src="predict.js"></script>
+<script src="engine.js"></script>
+<script src="bridge.js"></script>
+<script src="static/js/app.js"></script>
 <script>
-(function(){
-  "use strict";
-  var D = window.MCWP;
-  if (!D) return;
+const STATE = {
+  hist: [{"n": 5, "x": 1602618.25}, {"n": 8, "x": 1643371.41}, {"n": 23, "x": 1684124.57}, {"n": 47, "x": 1724877.74}, {"n": 85, "x": 1765630.9}, {"n": 143, "x": 1806384.06}, {"n": 260, "x": 1847137.22}, {"n": 301, "x": 1887890.39}, {"n": 404, "x": 1928643.55}, {"n": 456, "x": 1969396.71}, {"n": 492, "x": 2010149.87}, {"n": 427, "x": 2050903.04}, {"n": 375, "x": 2091656.2}, {"n": 326, "x": 2132409.36}, {"n": 225, "x": 2173162.52}, {"n": 155, "x": 2213915.69}, {"n": 123, "x": 2254668.85}, {"n": 56, "x": 2295422.01}, {"n": 44, "x": 2336175.17}, {"n": 17, "x": 2376928.34}, {"n": 10, "x": 2417681.5}, {"n": 9, "x": 2458434.66}, {"n": 5, "x": 2499187.82}, {"n": 2, "x": 2539940.99}, {"n": 1, "x": 2580694.15}, {"n": 1, "x": 2621447.31}],
+  budget: 2014742.33,
+  p50: 2011161.97,
+  p90: 2199738.21,
+  risk: 44.1,
+  colour: 'var(--tone-2)',
+  reliability: [{"n": 113, "observed": 3.5, "predicted": 4.1}, {"n": 71, "observed": 15.5, "predicted": 14.9}, {"n": 35, "observed": 22.9, "predicted": 24.3}, {"n": 23, "observed": 43.5, "predicted": 34.9}, {"n": 30, "observed": 43.3, "predicted": 45.5}, {"n": 39, "observed": 46.2, "predicted": 55.7}, {"n": 32, "observed": 53.1, "predicted": 64.9}, {"n": 27, "observed": 85.2, "predicted": 74.7}, {"n": 30, "observed": 96.7, "predicted": 84.8}, {"n": 120, "observed": 91.7, "predicted": 96.1}],
+  units: {"asphalt_mix": "tonne", "ceramic_tile": "m\u00b2", "clay_brick": "1000 units", "cmu_block": "unit", "copper_piping": "m", "dimensional_lumber": "m\u00b3", "electrical_conduit": "m", "glazing_unit": "m\u00b2", "gypsum_drywall": "sheet", "interior_paint": "L", "membrane_roofing": "m\u00b2", "mineral_wool": "m\u00b2", "plywood_sheathing": "sheet", "ready_mix_concrete": "m\u00b3", "rebar_steel": "tonne", "structural_steel": "tonne"},
+};
 
-  var money = function(v, d){
-    d = d || 0;
-    return (v < 0 ? "-" : "") + "$" + Math.abs(v).toLocaleString("en-US",
-      {minimumFractionDigits:d, maximumFractionDigits:d});
-  };
-  var compact = function(v){
-    var a = Math.abs(v), s = v < 0 ? "-" : "";
-    if (a >= 1e6) return s + "$" + (a/1e6).toFixed(2) + "M";
-    if (a >= 1e3) return s + "$" + (a/1e3).toFixed(0) + "K";
-    return s + "$" + a.toFixed(0);
-  };
-  var pct = function(v, d){ return v.toFixed(d === undefined ? 1 : d) + "%"; };
-  var el = function(sel){ return document.querySelector(sel); };
-
-  /* ── tabs ─────────────────────────────────────────────── */
-  var tabs = el(".tabs"), current = 0;
-  D.projects.forEach(function(p, i){
-    var b = document.createElement("button");
-    b.className = "tab"; b.type = "button"; b.role = "tab";
-    b.textContent = p.name;
-    b.setAttribute("aria-selected", i === 0 ? "true" : "false");
-    b.addEventListener("click", function(){ select(i); });
-    tabs.appendChild(b);
+function paint() {
+  MC.distribution(document.getElementById('dist-chart'), {
+    height: 300,
+    bins: STATE.hist.map((b) => ({ x: b.x, n: b.n })),
+    markers: [
+      { x: STATE.budget, label: 'Budget', color: 'var(--text)', bold: true },
+      { x: STATE.p50, label: 'Median', color: 'var(--tone-3)' },
+      { x: STATE.p90, label: 'P90', color: 'var(--tone-2)' },
+    ],
   });
 
-  function select(i){
-    current = i;
-    Array.prototype.forEach.call(tabs.children, function(b, j){
-      b.setAttribute("aria-selected", j === i ? "true" : "false");
+  MC.gauge(document.getElementById('risk-gauge'), {
+    value: STATE.risk, max: 100, size: 230, color: STATE.colour,
+    label: 'chance of overrun', format: (v) => `${v.toFixed(0)}%`,
+  });
+
+  if (STATE.reliability.length) {
+    MC.scatter(document.getElementById('reliability-chart'), {
+      height: 240,
+      points: STATE.reliability.map((p) => ({
+        x: p.predicted, y: p.observed, r: p.n, accent: 'var(--tone-3)', label: `${p.n} projects`,
+      })),
+      xLabel: 'Predicted', yLabel: 'Observed',
+      xFormat: (v) => `${v.toFixed(0)}%`, yFormat: (v) => `${v.toFixed(0)}%`,
+      diagonal: true, max: 100,
     });
-    render(D.projects[i]);
   }
+}
+paint();
+document.addEventListener('mcwp:theme', () => setTimeout(paint, 60));
 
-  /* ── figure row ───────────────────────────────────────── */
-  function figures(p){
-    var over = p.variance < 0;
-    return [
-      {k:"Budget",          v:compact(p.budget),                 n:p.area.toLocaleString()+" m² · "+p.weeks+" weeks"},
-      {k:"Expected cost",   v:compact(p.expected),               n:(over?"over":"under")+" by "+compact(Math.abs(p.variance)), cls:over?"risk":"safe"},
-      {k:"Predicted waste", v:pct(p.waste.pct,2),                n:pct(p.waste.low_pct,1)+" – "+pct(p.waste.high_pct,1)+" band"},
-      {k:"Overrun risk",    v:pct(p.overrun.probability,1),      n:"benchmark allowance "+pct(p.waste.benchmark_pct,1), cls:p.overrun.probability>=50?"risk":"safe"},
-      {k:"Contingency",     v:pct(p.buffer.pct_of_budget,2),     n:compact(p.buffer.amount)+" to hit "+p.buffer.target_risk+"%"}
-    ];
-  }
-
-  function render(p){
-    /* figures */
-    var f = el(".figs");
-    f.innerHTML = "";
-    figures(p).forEach(function(d){
-      var div = document.createElement("div");
-      div.className = "fig fade";
-      div.innerHTML = '<span class="k">'+d.k+'</span>' +
-        '<span class="v '+(d.cls||"")+'">'+d.v+'</span>' +
-        '<span class="n">'+d.n+'</span>';
-      f.appendChild(div);
-    });
-
-    /* verdict chip */
-    var v = el(".verdict");
-    v.textContent = p.overrun.verdict;
-    v.style.color = p.overrun.probability >= 50 ? "var(--risk)" : "var(--safe)";
-
-    chart(p);
-    ledger(p);
-    risks(p);
-  }
-
-  /* ── the distribution ─────────────────────────────────── */
-  function chart(p){
-    var H = p.overrun.histogram, box = el(".chartbox");
-    var W = 1000, HT = 300, PAD = {t:26, r:16, b:38, l:16};
-    var xs = H.map(function(d){ return d.x; });
-    var lo = Math.min(Math.min.apply(null, xs), p.budget);
-    var hi = Math.max(Math.max.apply(null, xs), p.budget, p.overrun.p90);
-    var span = (hi - lo) || 1;
-    lo -= span * 0.06; hi += span * 0.06; span = hi - lo;
-
-    var maxN = Math.max.apply(null, H.map(function(d){ return d.n; })) || 1;
-    var bw = H.length > 1 ? Math.abs(H[1].x - H[0].x) : span / 26;
-    var X = function(val){ return PAD.l + (val - lo) / span * (W - PAD.l - PAD.r); };
-    var Y = function(n){ return HT - PAD.b - (n / maxN) * (HT - PAD.t - PAD.b); };
-
-    var bars = H.map(function(d){
-      var over = d.x > p.budget;
-      var x0 = X(d.x - bw/2) + 0.6, x1 = X(d.x + bw/2) - 0.6;
-      return '<rect x="'+x0.toFixed(1)+'" y="'+Y(d.n).toFixed(1)+
-             '" width="'+Math.max(x1-x0,0.5).toFixed(1)+
-             '" height="'+(HT - PAD.b - Y(d.n)).toFixed(1)+
-             '" fill="'+(over ? "var(--risk)" : "var(--safe)")+'"/>';
-    }).join("");
-
-    var bx = X(p.budget), px = X(p.overrun.p90), base = HT - PAD.b;
-    var svg =
-      '<svg viewBox="0 0 '+W+' '+HT+'" role="img" aria-label="Simulated cost distribution for '+
-        p.name+'. Budget '+money(p.budget)+', 90th percentile '+money(p.overrun.p90)+'.">' +
-      bars +
-      /* baseline */
-      '<line x1="'+PAD.l+'" y1="'+base+'" x2="'+(W-PAD.r)+'" y2="'+base+
-        '" stroke="var(--ink)" stroke-width="1.5"/>' +
-      /* buffer span */
-      '<line x1="'+bx.toFixed(1)+'" y1="'+(PAD.t-12)+'" x2="'+px.toFixed(1)+'" y2="'+(PAD.t-12)+
-        '" stroke="var(--ink-2)" stroke-width="1"/>' +
-      '<text x="'+((bx+px)/2).toFixed(1)+'" y="'+(PAD.t-18)+
-        '" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="13" ' +
-        'fill="var(--ink-2)">contingency '+compact(p.buffer.amount)+'</text>' +
-      /* p90 */
-      '<line x1="'+px.toFixed(1)+'" y1="'+(PAD.t-12)+'" x2="'+px.toFixed(1)+'" y2="'+base+
-        '" stroke="var(--ink-2)" stroke-width="1.5" stroke-dasharray="2 3"/>' +
-      '<text x="'+px.toFixed(1)+'" y="'+(base+22)+'" text-anchor="middle" ' +
-        'font-family="IBM Plex Mono, monospace" font-size="13" fill="var(--ink-2)">p90 '+
-        compact(p.overrun.p90)+'</text>' +
-      /* budget */
-      '<line x1="'+bx.toFixed(1)+'" y1="'+(PAD.t-12)+'" x2="'+bx.toFixed(1)+'" y2="'+base+
-        '" stroke="var(--ink)" stroke-width="2"/>' +
-      '<text x="'+bx.toFixed(1)+'" y="'+(base+22)+'" text-anchor="middle" ' +
-        'font-family="IBM Plex Mono, monospace" font-size="13" font-weight="600" ' +
-        'fill="var(--ink)">budget '+compact(p.budget)+'</text>' +
-      '</svg>';
-    box.innerHTML = svg;
-  }
-
-  /* ── ledger ───────────────────────────────────────────── */
-  function ledger(p){
-    el("#lines").innerHTML = p.lines.map(function(l){
-      return "<tr>" +
-        "<td>"+l.name+"</td>" +
-        "<td>"+l.qty.toLocaleString("en-US",{maximumFractionDigits:0})+" "+l.unit+"</td>" +
-        "<td>"+pct(l.waste,2)+"</td>" +
-        '<td class="band">'+pct(l.low,1)+" – "+pct(l.high,1)+"</td>" +
-        '<td class="band">'+pct(l.bench,1)+"</td>" +
-        "<td>"+money(l.wasted_value)+"</td>" +
-        "<td>"+pct(l.share,1)+"</td>" +
-      "</tr>";
-    }).join("");
-  }
-
-  /* ── risk attribution ─────────────────────────────────── */
-  function risks(p){
-    var top = p.risks[0] ? p.risks[0].variance_share : 1;
-    el("#risks").innerHTML = p.risks.map(function(r){
-      var w = Math.max(2, r.variance_share / top * 100);
-      return "<li>" +
-        '<span class="nm">'+r.name+"</span>" +
-        '<span class="pc">'+pct(r.variance_share,1)+" of variance</span>" +
-        '<span class="bar"><span style="width:'+w.toFixed(1)+'%"></span></span>' +
-        '<span class="meta">predicted '+pct(r.waste_pct,2)+
-          " against a "+pct(r.benchmark_pct,1)+" allowance · "+
-          money(r.wasted_value)+" of material discarded</span>" +
-      "</li>";
-    }).join("");
-  }
-
-  /* ── static: model metrics ────────────────────────────── */
-  (function(){
-    var m = D.model, w = m.waste, o = m.overrun;
-    var rows = [
-      {k:"Waste R²",        v:w.r2.toFixed(3),            n:"variance explained, held-out lines"},
-      {k:"Waste MAE",       v:w.mae_pp.toFixed(2)+"pp",   n:"mean absolute error in percentage points"},
-      {k:"Band coverage",   v:w.coverage_80.toFixed(1)+"%", n:"against an 80% target"},
-      {k:"Overrun AUC",     v:o.auc.toFixed(3),           n:"ranking skill on held-out projects"},
-      {k:"Brier score",     v:o.brier.toFixed(3),         n:"base rate "+o.base_rate.toFixed(1)+"%"},
-      {k:"Accuracy",        v:o.accuracy*100 < 100 ? (o.accuracy*100).toFixed(1)+"%" : "-",
-       n:o.test_projects+" test projects"}
-    ];
-    el("#metrics").innerHTML = rows.map(function(r){
-      return '<div class="metric"><span class="k">'+r.k+'</span>' +
-             '<span class="v">'+r.v+'</span><span class="n">'+r.n+"</span></div>";
-    }).join("");
-
-    el("#cal-note").textContent =
-      "The 80% interval was tuned until it actually covered 80% of held-out lines — " +
-      "it lands at " + w.coverage_80.toFixed(1) + "%. An interval that does not hold " +
-      "its coverage is a decoration, and a contingency sized from it would be fiction.";
-
-    el("#corpus").textContent =
-      m.corpus_projects.toLocaleString() + " projects · " +
-      m.corpus_lines.toLocaleString() + " material lines · fit in " +
-      m.fit_seconds.toFixed(1) + "s";
-  })();
-
-  select(0);
-})();
+// Live edits redraw the outturn distribution and the risk gauge in place.
+window.repaintOutturn = function (data) {
+  STATE.hist = data.overrun.histogram;
+  STATE.budget = data.cost.budget;
+  STATE.p50 = data.overrun.p50;
+  STATE.p90 = data.overrun.p90;
+  STATE.risk = data.overrun.probability;
+  STATE.colour = data.overrun.verdict.colour;
+  paint();
+};
 </script>
 </body>
 </html>
