@@ -365,11 +365,30 @@
     const menu = $(".model-pick-menu", pick);
     const options = $$("li[role='option']", menu);
 
+    // Lift the menu out of the panel so no stacking context can bury it.
+    document.body.appendChild(menu);
+
+    const place = () => {
+      const box = button.getBoundingClientRect();
+      menu.style.minWidth = `${box.width}px`;
+      menu.style.left = `${box.left}px`;
+      menu.style.top = `${box.bottom + 6}px`;
+      // flip above the button if there is no room below
+      const height = menu.offsetHeight;
+      if (box.bottom + 6 + height > window.innerHeight && box.top - 6 - height > 0) {
+        menu.style.top = `${box.top - 6 - height}px`;
+      }
+    };
+
     const open = (state) => {
       pick.dataset.open = String(state);
       menu.hidden = !state;
       button.setAttribute("aria-expanded", String(state));
+      if (state) place();
     };
+
+    window.addEventListener("resize", () => { if (!menu.hidden) place(); });
+    window.addEventListener("scroll", () => { if (!menu.hidden) place(); }, true);
 
     const choose = (value) => {
       const option = options.find((o) => o.dataset.value === value);
@@ -392,11 +411,11 @@
     options.forEach((o) => o.addEventListener("click", () => choose(o.dataset.value)));
 
     document.addEventListener("click", (event) => {
-      if (!pick.contains(event.target)) open(false);
+      if (!pick.contains(event.target) && !menu.contains(event.target)) open(false);
     });
-    pick.addEventListener("keydown", (event) => {
+    [pick, menu].forEach((node) => node.addEventListener("keydown", (event) => {
       if (event.key === "Escape") { open(false); button.focus(); }
-    });
+    }));
   }
 
   /* ------------------------------------------------------- table search -- */
