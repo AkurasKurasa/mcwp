@@ -168,6 +168,8 @@ select.input optgroup { color: var(--dim); font-style: normal; }
   font-family: var(--font-mono);
 }
 .input-affix .input { padding-right: 58px; }
+/* long units ('days/month') need more room than the 58px default */
+.input-affix.wide .input { padding-right: 94px; }
 
 /* ---------------------------------------------------------------- table -- */
 
@@ -309,7 +311,7 @@ table.data .muted { color: var(--muted); }
 /* ---------------------------------------------------- materials list rows */
 
 .line-head, .line-row {
-  display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) 38px;
+  display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
   gap: 10px; align-items: center;
 }
 .line-head {

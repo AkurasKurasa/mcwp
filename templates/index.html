@@ -166,7 +166,7 @@
         </div>
         <div class="field">
           <label>Rain frequency</label>
-          <div class="input-affix">
+          <div class="input-affix wide">
             <input class="input" type="number" name="rain_days" id="f-rain"
                    min="0" max="28" step="1" value="{{ r.project.rain_days|num(0) }}">
             <span class="suffix">days/month</span>
@@ -212,13 +212,11 @@
         <div class="right">
           <button type="button" class="btn sm ghost" id="load-sample">
             {{ icon('clipboard', 14) }} Load sample</button>
-          <button type="button" class="btn sm ghost" id="suggest-lines">
-            {{ icon('sparkle', 14) }} Suggest</button>
         </div>
       </div>
 
       <div class="line-head">
-        <span>Material</span><span>Installed quantity</span><span></span>
+        <span>Material</span><span>Installed quantity</span>
       </div>
       <div id="lines">
         {% for line in r.lines %}
@@ -237,14 +235,9 @@
                    value="{{ line.quantity }}">
             <span class="suffix">{{ line.unit }}</span>
           </div>
-          <button type="button" class="btn icon ghost line-drop" title="Remove">
-            {{ icon('trash', 15) }}</button>
         </div>
         {% endfor %}
       </div>
-
-      <button type="button" class="btn ghost block mt-16" id="add-line">
-        {{ icon('plus') }} Add material</button>
 
       <hr class="hr">
 
@@ -500,14 +493,8 @@
       </div>
       <p class="lede" style="font-size:15px; margin:0 0 18px" data-out="summary">{{ r.summary }}</p>
       <hr class="hr">
-      <ol class="stack gap-12" id="advice-list" style="margin:0; padding-left:18px">
-        {% for item in r.advice %}
-        <li>
-          <b class="small">{{ item.title }}</b>
-          <div class="tiny dim mt-8">{{ item.detail }}</div>
-        </li>
-        {% endfor %}
-      </ol>
+      <p class="small muted" style="margin:0; line-height:1.75"
+         data-out="recommendation">{{ r.recommendation }}</p>
     </div>
 
   </div>
@@ -574,11 +561,7 @@ function renderFactors(data) {
     }
   }
   set('summary', data.summary || '');
-  const list = document.getElementById('advice-list');
-  if (list && data.advice) {
-    list.innerHTML = data.advice.map((a) =>
-      `<li><b class="small">${a.title}</b><div class="tiny dim mt-8">${a.detail}</div></li>`).join('');
-  }
+  set('recommendation', data.recommendation || '');
 }
 
 window.repaintOutturn = function (data) {

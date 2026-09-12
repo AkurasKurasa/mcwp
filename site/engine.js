@@ -386,12 +386,27 @@
         helps: good < poor
       };
     });
+    // every factor at its good end at once - the floor is not the best single
+    // factor, and the three do not simply add up
+    var bestLines = records.map(function (row) {
+      var copy = Object.assign({}, row);
+      SITE_FACTORS.forEach(function (spec) { copy[spec.key] = spec.good; });
+      return copy;
+    });
+    var bestRecord = Object.assign({}, projectRecord);
+    SITE_FACTORS.forEach(function (spec) { bestRecord[spec.key] = spec.good; });
+    bestRecord.expected_waste = P.predictWaste(bestLines).reduce(function (sum, b, i) {
+      return sum + bestLines[i].line_value_share * b.centre;
+    }, 0);
+    var floor = P.predictOverrun(bestRecord);
+
     factors.sort(function (a, b) { return b.swing_pp - a.swing_pp; });
     return {
       base_pct: r2(base * 100, 1), factors: factors,
-      recoverable_pp: r2(factors.reduce(function (a, f) { return a + f.recoverable_pp; }, 0), 1),
-      floor_pct: factors.length
-        ? r2(Math.min.apply(null, factors.map(function (f) { return f.at_best_pct; })), 1) : null
+      // a stated value can already beat the "good" end, which would put the
+      // floor above where the project stands; it is a floor, so clamp it
+      recoverable_pp: r2(Math.max(base - floor, 0) * 100, 1),
+      floor_pct: r2(Math.min(floor, base) * 100, 1)
     };
   }
 
@@ -427,6 +442,75 @@
         risks[0].variance_share.toFixed(0) + "%), so it is the one to fix a price on first.";
     }
     return text;
+  }
+
+
+  function recommend(sens, storageM2, storageNeed, buffer) {
+    var by = {}; sens.factors.forEach(function (f) { by[f.key] = f; });
+    var lead = sens.factors[0];
+    var worth = function (f) { return f && f.recoverable_pp >= 3; };
+    var n0 = function (v) { return Math.round(v).toLocaleString("en-US"); };
+    var parts = [];
+
+    parts.push(worth(lead)
+      ? lead.label + " is the biggest lever on this project, of the " +
+        sens.base_pct.toFixed(0) + "% chance of going over budget."
+      : "Storage, rainfall and the contractor's experience are all set close to their " +
+        "best case, so little of the remaining risk can be recovered from site conditions.");
+
+    var storage = by.storage_ratio, ratio = storageNeed ? storageM2 / storageNeed : 1;
+    if (worth(storage) && ratio < 0.9) {
+      parts.push("Only " + n0(storageM2) + " m² is under cover against the " +
+        n0(storageNeed) + " m² a job this size needs, which is worth " +
+        storage.recoverable_pp.toFixed(0) + " points - getting the balance into covered, " +
+        "secure storage stops material weathering, being double-handled and going missing.");
+    } else if (worth(storage)) {
+      parts.push("Storage covers what the job needs and no more (" + n0(storageM2) +
+        " m² against " + n0(storageNeed) + " m²); the spare capacity to stage " +
+        "deliveries properly is worth another " + storage.recoverable_pp.toFixed(0) + " points.");
+    } else if (storage && ratio < 0.9) {
+      parts.push("Storage is short of what the job needs (" + n0(storageM2) +
+        " m² against " + n0(storageNeed) + " m²), though little of this " +
+        "package's risk lands there.");
+    } else if (storage) {
+      parts.push("Covered storage is already ample at " + n0(storageM2) +
+        " m², so there is nothing to win there.");
+    }
+
+    var rain = by.rain_days;
+    var wet = function (f) {
+      return f.stated.toFixed(0) + " wet day" + (Math.round(f.stated) === 1 ? "" : "s");
+    };
+    if (worth(rain)) {
+      parts.push("At " + wet(rain) + " a month the weather carries " +
+        rain.recoverable_pp.toFixed(0) + " points; sequencing boards, insulation and " +
+        "finishes behind a watertight envelope, or moving them out of the wettest months, " +
+        "is where that comes back.");
+    } else if (rain) {
+      parts.push("At " + wet(rain) + " a month rainfall is not driving this forecast.");
+    }
+
+    var crew = by.experience_years, years = crew ? crew.stated : 0;
+    if (worth(crew) && years < 8) {
+      parts.push("The contractor's " + years.toFixed(0) + " years on work of this type is " +
+        "light and accounts for " + crew.recoverable_pp.toFixed(0) + " points - closable " +
+        "with a stronger site manager and tighter takeoff review rather than a different price.");
+    } else if (worth(crew)) {
+      parts.push("At " + years.toFixed(0) + " years the contractor is experienced without " +
+        "being seasoned; " + crew.recoverable_pp.toFixed(0) + " points sit between them and " +
+        "a team that has done this many times over.");
+    } else if (crew) {
+      parts.push("With " + years.toFixed(0) + " years on work of this type the contractor " +
+        "is already an asset to the forecast.");
+    }
+
+    if (sens.recoverable_pp >= 3) {
+      var tail = buffer.adequate ? "" :
+        ", taking the contingency below the " + buffer.pct_of_budget.toFixed(1) + "% now indicated";
+      parts.push("Put all three right and the risk falls from " + sens.base_pct.toFixed(0) +
+        "% to about " + sens.floor_pct.toFixed(0) + "%" + tail + ".");
+    }
+    return parts.join(" ");
   }
 
   /* ── the analysis ────────────────────────────────────────────────── */
@@ -536,6 +620,7 @@
 
     var out = {
       reference: reference(),
+      recommendation: recommend(sens, project.storage_m2, storageNeed, sim.buffer),
       summary: summarise(project,
         { expected: r2(expectedCost, 2), budget: r2(budget, 2) },
         { pct: r2(expectedWaste * 100, 2),

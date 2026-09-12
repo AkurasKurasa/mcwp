@@ -140,6 +140,75 @@ def _ordinal(sensitivity, key) -> str:
     return ("biggest", "second", "third")[min(rank, 2)] if rank else "biggest"
 
 
+def _recommendation(sensitivity, project, buffer_) -> str:
+    """What to do, in prose, ordered by which condition holds the most risk."""
+    factors = {f["key"]: f for f in sensitivity["factors"]}
+    lead = sensitivity["factors"][0] if sensitivity["factors"] else None
+    worth = lambda f: f is not None and f["recoverable_pp"] >= 3
+    parts = []
+
+    if worth(lead):
+        parts.append(f"{lead['label']} is the biggest lever on this project, of the "
+                     f"{sensitivity['base_pct']:.0f}% chance of going over budget.")
+    else:
+        parts.append("Storage, rainfall and the contractor's experience are all set close "
+                     "to their best case, so little of the remaining risk can be recovered "
+                     "from site conditions.")
+
+    storage = factors.get("storage_ratio")
+    have, need = project.get("storage_m2", 0.0), project.get("storage_need", 1.0)
+    ratio = have / need if need else 1.0
+    if worth(storage) and ratio < 0.9:
+        parts.append(f"Only {have:,.0f} m² is under cover against the {need:,.0f} m² "
+                     f"a job this size needs, which is worth {storage['recoverable_pp']:.0f} "
+                     "points - getting the balance into covered, secure storage stops "
+                     "material weathering, being double-handled and going missing.")
+    elif worth(storage):
+        parts.append(f"Storage covers what the job needs and no more ({have:,.0f} m² "
+                     f"against {need:,.0f} m²); the spare capacity to stage deliveries "
+                     f"properly is worth another {storage['recoverable_pp']:.0f} points.")
+    elif storage and ratio < 0.9:
+        parts.append(f"Storage is short of what the job needs ({have:,.0f} m² against "
+                     f"{need:,.0f} m²), though little of this package's risk lands "
+                     "there.")
+    elif storage:
+        parts.append(f"Covered storage is already ample at {have:,.0f} m², so there is "
+                     "nothing to win there.")
+
+    rain = factors.get("rain_days")
+    wet = lambda f: f"{f['stated']:.0f} wet day" + ("" if round(f["stated"]) == 1 else "s")
+    if worth(rain):
+        parts.append(f"At {wet(rain)} a month the weather carries "
+                     f"{rain['recoverable_pp']:.0f} points; sequencing boards, insulation "
+                     "and finishes behind a watertight envelope, or moving them out of the "
+                     "wettest months, is where that comes back.")
+    elif rain:
+        parts.append(f"At {wet(rain)} a month rainfall is not driving this forecast.")
+
+    crew = factors.get("experience_years")
+    years = crew["stated"] if crew else 0.0
+    if worth(crew) and years < 8:
+        parts.append(f"The contractor's {years:.0f} years on work of this type is light and "
+                     f"accounts for {crew['recoverable_pp']:.0f} points - closable with a "
+                     "stronger site manager and tighter takeoff review rather than a "
+                     "different price.")
+    elif worth(crew):
+        parts.append(f"At {years:.0f} years the contractor is experienced without being "
+                     f"seasoned; {crew['recoverable_pp']:.0f} points sit between them and a "
+                     "team that has done this many times over.")
+    elif crew:
+        parts.append(f"With {crew['stated']:.0f} years on work of this type the contractor "
+                     "is already an asset to the forecast.")
+
+    if sensitivity["recoverable_pp"] >= 3:
+        tail = (f", taking the contingency below the {buffer_['pct_of_budget']:.1f}% now "
+                "indicated" if not buffer_["adequate"] else "")
+        parts.append(f"Put all three right and the risk falls from "
+                     f"{sensitivity['base_pct']:.0f}% to about "
+                     f"{sensitivity['floor_pct']:.0f}%{tail}.")
+    return " ".join(parts)
+
+
 def _summary(project, cost, waste, overrun, buffer_, sensitivity, risks) -> str:
     """One paragraph a reader can act on without reading the charts."""
     verdict = overrun["verdict"]["label"].lower()
@@ -318,10 +387,15 @@ def analyse(raw: dict) -> dict:
                        {"verdict": _verdict(classifier_risk),
                         "probability": round(classifier_risk * 100, 1)},
                        simulation["buffer"], sensitivity, risks)
+    recommendation = _recommendation(
+        sensitivity,
+        {"storage_need": storage_need, "storage_m2": project["storage_m2"]},
+        simulation["buffer"])
 
     return {
         "reference": _reference(),
         "summary": summary,
+        "recommendation": recommendation,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "project": {
             **project,
@@ -413,8 +487,20 @@ def _sensitivity(bundle, records, project_record, stated) -> dict:
                     for i in range(width))
         variants.append(dict(project_record, **{spec["key"]: value,
                                                 "expected_waste": waste}))
-    probs = bundle.predict_overrun_many([project_record] + variants)
-    base, rest = float(probs[0]), probs[1:]
+    # every factor at its good end at once - the floor is not the best single
+    # factor, and the three do not simply add up
+    best_all = dict(project_record)
+    best_lines = [dict(row) for row in records]
+    for spec in _SITE_FACTORS:
+        best_all[spec["key"]] = spec["good"]
+        for row in best_lines:
+            row[spec["key"]] = spec["good"]
+    best_centres = bundle.predict_center(best_lines)
+    best_all["expected_waste"] = sum(row["line_value_share"] * float(centre)
+                                     for row, centre in zip(best_lines, best_centres))
+
+    probs = bundle.predict_overrun_many([project_record] + variants + [best_all])
+    base, rest, floor = float(probs[0]), probs[1:-1], float(probs[-1])
 
     factors = []
     for index, spec in enumerate(_SITE_FACTORS):
@@ -438,8 +524,10 @@ def _sensitivity(bundle, records, project_record, stated) -> dict:
     return {
         "base_pct": round(base * 100, 1),
         "factors": factors,
-        "recoverable_pp": round(sum(f["recoverable_pp"] for f in factors), 1),
-        "floor_pct": round(min(f["at_best_pct"] for f in factors), 1) if factors else None,
+        # a stated value can already beat the "good" end, which would put the
+        # floor above where the project stands; it is a floor, so clamp it
+        "recoverable_pp": round(max(base - floor, 0.0) * 100, 1),
+        "floor_pct": round(min(floor, base) * 100, 1),
     }
 
 

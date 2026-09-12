@@ -144,17 +144,21 @@
       const suffix = $(".suffix", row);
       if (suffix) suffix.textContent = units[key] || "";
     };
+    // The materials list is fixed: no add, no remove. Kept tolerant so the
+    // page still works if those controls are ever put back.
     const syncState = () => {
       const rows = $$(".line-row", linesHost);
       rows.forEach((row) => {
-        $(".line-drop", row).disabled = rows.length <= 1;
+        const drop = $(".line-drop", row);
+        if (drop) drop.disabled = rows.length <= 1;
       });
     };
 
     $$(".line-row", linesHost).forEach(syncUnit);
     syncState();
 
-    $("#add-line").addEventListener("click", () => {
+    const addLine = $("#add-line");
+    if (addLine) addLine.addEventListener("click", () => {
       const rows = $$(".line-row", linesHost);
       if (rows.length >= 10) {
         window.mcToast("Ten materials is the maximum for one package.", "warn");
@@ -173,6 +177,7 @@
       clone.classList.add("just-added");
       form.dispatchEvent(new Event("change", { bubbles: true }));
     });
+
 
     linesHost.addEventListener("click", (event) => {
       const drop = event.target.closest(".line-drop");
