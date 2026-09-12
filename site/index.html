@@ -70,6 +70,23 @@
 <!-- ═══════════════════════════════════════════════ 1. PROJECT BRIEF ══════ -->
 <section id="brief" class="section">
   <script id="unit-map" type="application/json">{"asphalt_mix": "tonne", "ceramic_tile": "m\u00b2", "clay_brick": "1000 units", "cmu_block": "unit", "copper_piping": "m", "dimensional_lumber": "m\u00b3", "electrical_conduit": "m", "glazing_unit": "m\u00b2", "gypsum_drywall": "sheet", "interior_paint": "L", "membrane_roofing": "m\u00b2", "mineral_wool": "m\u00b2", "plywood_sheathing": "sheet", "ready_mix_concrete": "m\u00b3", "rebar_steel": "tonne", "structural_steel": "tonne"}</script>
+  <div class="panel tight reveal mb-16">
+    <div class="row gap-12 wrap" style="align-items:center">
+      <label for="f-backend" style="font-weight:600">Prediction model</label>
+      <select class="input" name="backend" id="f-backend" form="brief-form"
+              style="max-width:340px">
+        <option value="random_forest" disabled>
+          Random Forest - R&sup2; 0.699 / AUC 0.898</option>
+        <option value="xgboost" disabled>
+          XGBoost - R&sup2; 0.684 / AUC 0.894</option>
+        <option value="hist_gradient_boosting" selected>
+          HistGradientBoosting - R&sup2; 0.699 / AUC 0.9</option>
+      </select>
+      <span class="tiny dim">This build runs entirely in your browser and carries only the HistGradientBoosting model, so the other backends are unavailable here. Run the app locally to compare them.
+        Compare them with <code>python tools/compare_models.py</code>.</span>
+    </div>
+  </div>
+
   <form method="post" id="brief-form" class="grid g-5-7 mb-24" style="align-items:start">
 
     <div class="panel lift reveal">
@@ -418,20 +435,6 @@
      width="16" height="16" style="flex:none"><path d="M12 5v14M5 12h14"/></svg> Add material</button>
 
       <hr class="hr">
-
-      <div class="field mb-16">
-        <label>Prediction model</label>
-        <select class="input" name="backend" id="f-backend">
-          <option value="random_forest" disabled>
-            Random Forest - R&sup2; 0.699 / AUC 0.898</option>
-          <option value="xgboost" disabled>
-            XGBoost - R&sup2; 0.684 / AUC 0.894</option>
-          <option value="hist_gradient_boosting" selected>
-            HistGradientBoosting - R&sup2; 0.699 / AUC 0.9</option>
-        </select>
-        <div class="tiny dim mt-8">This build runs entirely in your browser and carries only the HistGradientBoosting model, so the other backends are unavailable here. Run the app locally to compare them.
-          Compare them with <code>python tools/compare_models.py</code>.</div>
-      </div>
 
       <div class="row gap-12 wrap">
         <span class="badge">5 materials</span>

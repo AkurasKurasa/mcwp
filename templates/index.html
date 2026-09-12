@@ -23,6 +23,21 @@
 <!-- ═══════════════════════════════════════════════ 1. PROJECT BRIEF ══════ -->
 <section id="brief" class="section">
   <script id="unit-map" type="application/json">{{ units|tojson }}</script>
+  <div class="panel tight reveal mb-16">
+    <div class="row gap-12 wrap" style="align-items:center">
+      <label for="f-backend" style="font-weight:600">Prediction model</label>
+      <select class="input" name="backend" id="f-backend" form="brief-form"
+              style="max-width:340px">
+        {% for b in model_backends %}
+        <option value="{{ b.key }}"{% if b.key == r.model.backend %} selected{% endif %}{% if not b.available %} disabled{% endif %}>
+          {{ b.label }}{% if not b.available %} - not installed{% elif b.r2 %} - R&sup2; {{ b.r2 }} / AUC {{ b.auc }}{% endif %}</option>
+        {% endfor %}
+      </select>
+      <span class="tiny dim">Swaps the learner behind every figure on this page.
+        Compare them with <code>python tools/compare_models.py</code>.</span>
+    </div>
+  </div>
+
   <form method="post" id="brief-form" class="grid g-5-7 mb-24" style="align-items:start">
 
     <div class="panel lift reveal">
@@ -141,18 +156,6 @@
         {{ icon('plus') }} Add material</button>
 
       <hr class="hr">
-
-      <div class="field mb-16">
-        <label>Prediction model</label>
-        <select class="input" name="backend" id="f-backend">
-          {% for b in model_backends %}
-          <option value="{{ b.key }}"{% if b.key == r.model.backend %} selected{% endif %}{% if not b.available %} disabled{% endif %}>
-            {{ b.label }}{% if not b.available %} - not installed{% elif b.r2 %} - R&sup2; {{ b.r2 }} / AUC {{ b.auc }}{% endif %}</option>
-          {% endfor %}
-        </select>
-        <div class="tiny dim mt-8">Swaps the learner behind every figure on this page.
-          Compare them with <code>python tools/compare_models.py</code>.</div>
-      </div>
 
       <div class="row gap-12 wrap">
         <span class="badge">{{ r.lines|length }} materials</span>

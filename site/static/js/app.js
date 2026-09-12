@@ -336,6 +336,17 @@
       clearTimeout(timer);
       timer = setTimeout(refresh, 90);
     });
+
+    // Controls attached by form= rather than nesting (the model chooser sits
+    // above the form) are in form.elements, but their events bubble through
+    // the DOM, not the form. Wire them up directly.
+    $$("[form]").forEach((node) => {
+      if (form.contains(node) || node.getAttribute("form") !== form.id) return;
+      node.addEventListener("change", () => {
+        clearTimeout(timer);
+        timer = setTimeout(refresh, 90);
+      });
+    });
   }
 
   /* ------------------------------------------------------- table search -- */
