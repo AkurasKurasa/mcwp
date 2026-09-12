@@ -203,10 +203,11 @@ def _hgb_classifier():
 
 class Backend:
     def __init__(self, key, label, note, make_waste, make_classifier,
-                 prepare, available=True, supports_export=False):
+                 prepare, available=True, supports_export=False, library=""):
         self.key = key
         self.label = label
         self.note = note
+        self.library = library
         self._make_waste = make_waste
         self._make_classifier = make_classifier
         self.prepare = prepare
@@ -221,7 +222,8 @@ class Backend:
 
     def as_dict(self):
         return {"key": self.key, "label": self.label, "note": self.note,
-                "available": self.available, "supports_export": self.supports_export}
+                "library": self.library, "available": self.available,
+                "supports_export": self.supports_export}
 
 
 BACKENDS = {
@@ -230,14 +232,14 @@ BACKENDS = {
         "Bagged trees with a quantile-regression-forest interval. Few knobs, "
         "hard to overfit, but cannot predict beyond the training range.",
         lambda: QuantileForest(),
-        _rf_classifier, one_hot),
+        _rf_classifier, one_hot, library="scikit-learn"),
 
     "xgboost": Backend(
         "xgboost", "XGBoost",
         "Gradient boosting with a pinball objective for the interval and "
         "native categorical splits.",
         lambda: TripleRegressor(_xgb_regressor, as_codes, "xgboost"),
-        _xgb_classifier, as_codes, available=HAS_XGBOOST),
+        _xgb_classifier, as_codes, available=HAS_XGBOOST, library="XGBoost"),
 
     "hist_gradient_boosting": Backend(
         "hist_gradient_boosting", "HistGradientBoosting",
@@ -245,7 +247,7 @@ BACKENDS = {
         "evaluate, so the GitHub Pages site is pinned to it.",
         lambda: TripleRegressor(_hgb_regressor, as_codes, "hist_gradient_boosting",
                                 supports_export=True),
-        _hgb_classifier, as_codes, supports_export=True),
+        _hgb_classifier, as_codes, supports_export=True, library="scikit-learn"),
 }
 
 DEFAULT_BACKEND = "random_forest"

@@ -70,18 +70,100 @@
 <!-- ═══════════════════════════════════════════════ 1. PROJECT BRIEF ══════ -->
 <section id="brief" class="section">
   <script id="unit-map" type="application/json">{"asphalt_mix": "tonne", "ceramic_tile": "m\u00b2", "clay_brick": "1000 units", "cmu_block": "unit", "copper_piping": "m", "dimensional_lumber": "m\u00b3", "electrical_conduit": "m", "glazing_unit": "m\u00b2", "gypsum_drywall": "sheet", "interior_paint": "L", "membrane_roofing": "m\u00b2", "mineral_wool": "m\u00b2", "plywood_sheathing": "sheet", "ready_mix_concrete": "m\u00b3", "rebar_steel": "tonne", "structural_steel": "tonne"}</script>
+
   <div class="panel tight reveal mb-16">
     <div class="row gap-12 wrap" style="align-items:center">
       <label for="f-backend" style="font-weight:600">Prediction model</label>
-      <select class="input" name="backend" id="f-backend" form="brief-form"
-              style="max-width:340px">
-        <option value="random_forest" disabled>
-          Random Forest - R&sup2; 0.699 / AUC 0.898</option>
-        <option value="xgboost" disabled>
-          XGBoost - R&sup2; 0.684 / AUC 0.894</option>
-        <option value="hist_gradient_boosting" selected>
-          HistGradientBoosting - R&sup2; 0.699 / AUC 0.9</option>
+
+      <select class="sr-only" name="backend" id="f-backend" form="brief-form"
+              tabindex="-1" aria-hidden="true">
+        <option value="random_forest" disabled>Random Forest</option>
+        <option value="xgboost" disabled>XGBoost</option>
+        <option value="hist_gradient_boosting" selected>HistGradientBoosting</option>
       </select>
+
+      <div class="model-pick" id="model-pick" data-open="false">
+        <button type="button" class="model-pick-btn" aria-haspopup="listbox"
+                aria-expanded="false" aria-labelledby="f-backend-label">
+          <span data-pick-logo>  <svg class="model-logo" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+    <rect x="3.5" y="18" width="4.4" height="9" rx="1" fill="var(--tone-3)" opacity="0.5"/>
+    <rect x="9.4" y="12" width="4.4" height="15" rx="1" fill="var(--tone-3)" opacity="0.7"/>
+    <rect x="15.3" y="7" width="4.4" height="20" rx="1" fill="var(--tone-3)"/>
+    <rect x="21.2" y="13" width="4.4" height="14" rx="1" fill="var(--tone-3)" opacity="0.7"/>
+    <rect x="27.1" y="19" width="4" height="8" rx="1" fill="var(--tone-3)" opacity="0.5"/>
+  </svg>
+</span>
+          <span class="model-text">
+            <b data-pick-label>HistGradientBoosting</b>
+            <span data-pick-meta>scikit-learn &middot; R&sup2; 0.699 / AUC 0.9</span>
+          </span>
+          <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+               stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+
+        <ul class="model-pick-menu" role="listbox" aria-label="Prediction model" hidden>
+          <li aria-disabled="true" role="option" data-value="random_forest"
+              aria-selected="false"
+>
+              <svg class="model-logo" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+    <path d="M9 21 5.5 15.5h2L4.5 10.5h3L5 6h8l-2.5 4.5h3l-3 5h2L9 21Z" fill="var(--tone-4)"/>
+    <path d="M22 23 18 16.5h2.3L16.8 10.8h2.6L16.5 6h9l-2.9 4.8h2.6l-3.5 5.7H24L22 23Z" fill="var(--tone-3)"/>
+    <rect x="8.2" y="20.5" width="1.6" height="5" rx="0.6" fill="var(--dim)"/>
+    <rect x="21.2" y="22.5" width="1.6" height="3.5" rx="0.6" fill="var(--dim)"/>
+  </svg>
+
+            <span class="model-text">
+              <b>Random Forest</b>
+              <span>scikit-learn &middot; R&sup2; 0.699 / AUC 0.898</span>
+            </span>
+            <svg class="tick" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.4" stroke-linecap="round"
+                 stroke-linejoin="round" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>
+          </li>
+          <li aria-disabled="true" role="option" data-value="xgboost"
+              aria-selected="false"
+>
+              <svg class="model-logo" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+    <rect x="4" y="20" width="5" height="7" rx="1.2" fill="var(--tone-5)" opacity="0.55"/>
+    <rect x="11" y="15" width="5" height="12" rx="1.2" fill="var(--tone-5)" opacity="0.75"/>
+    <rect x="18" y="10" width="5" height="17" rx="1.2" fill="var(--tone-5)"/>
+    <path d="M5 17.5 13 12l7 4.5L28 6" stroke="var(--tone-2)" stroke-width="2.1"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M23.5 6H28v4.5" stroke="var(--tone-2)" stroke-width="2.1"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+
+            <span class="model-text">
+              <b>XGBoost</b>
+              <span>XGBoost &middot; R&sup2; 0.684 / AUC 0.894</span>
+            </span>
+            <svg class="tick" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.4" stroke-linecap="round"
+                 stroke-linejoin="round" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>
+          </li>
+          <li role="option" data-value="hist_gradient_boosting"
+              aria-selected="true"
+>
+              <svg class="model-logo" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+    <rect x="3.5" y="18" width="4.4" height="9" rx="1" fill="var(--tone-3)" opacity="0.5"/>
+    <rect x="9.4" y="12" width="4.4" height="15" rx="1" fill="var(--tone-3)" opacity="0.7"/>
+    <rect x="15.3" y="7" width="4.4" height="20" rx="1" fill="var(--tone-3)"/>
+    <rect x="21.2" y="13" width="4.4" height="14" rx="1" fill="var(--tone-3)" opacity="0.7"/>
+    <rect x="27.1" y="19" width="4" height="8" rx="1" fill="var(--tone-3)" opacity="0.5"/>
+  </svg>
+
+            <span class="model-text">
+              <b>HistGradientBoosting</b>
+              <span>scikit-learn &middot; R&sup2; 0.699 / AUC 0.9</span>
+            </span>
+            <svg class="tick" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.4" stroke-linecap="round"
+                 stroke-linejoin="round" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>
+          </li>
+        </ul>
+      </div>
+
       <span class="tiny dim">This build runs entirely in your browser and carries only the HistGradientBoosting model, so the other backends are unavailable here. Run the app locally to compare them.
         Compare them with <code>python tools/compare_models.py</code>.</span>
     </div>
@@ -652,389 +734,10 @@
 </section>
 
 <!-- ═══════════════════════════════════════════ 4. MATERIALS AT RISK ══════ -->
-<section id="materials" class="section">
-  <div class="section-title reveal">
-    <h2>Materials at risk</h2>
-    <span class="dim small">Ranked by money at stake, forecast uncertainty and price exposure</span>
-  </div>
-
-  <div class="grid g-7-5 mb-24">
-    <div class="panel lift flush reveal">
-      <div class="panel-head" style="padding:22px 22px 0;margin-bottom:14px">
-        <div><h3>Line-by-line forecast</h3>
-          <div class="sub">Order quantities already include the predicted waste</div></div>
-      </div>
-      <div class="table-wrap">
-        <table class="data">
-          <thead><tr>
-            <th>Material</th><th class="right">Installed</th><th class="right">Order</th>
-            <th class="right">Waste</th><th class="right">Wasted value</th><th class="right">Line cost</th>
-          </tr></thead>
-          <tbody>
-            <tr>
-              <td>
-                <div class="row gap-8">
-                  <span class="swatch" style="background:var(--tone-1)"></span>
-                  <div class="cell-title">
-                    <b>Ready-Mix Concrete</b>
-                    <span>21.8% of value &middot; $143.56/m³</span>
-                  </div>
-                </div>
-              </td>
-              <td class="right muted">2,852</td>
-              <td class="right">3,012</td>
-              <td class="right strong">
-                5.31%
-                <div class="tiny dim">3.26–7.33</div>
-              </td>
-              <td class="right c-rose">$22,979</td>
-              <td class="right">$465,725</td>
-            </tr>
-            <tr>
-              <td>
-                <div class="row gap-8">
-                  <span class="swatch" style="background:var(--tone-2)"></span>
-                  <div class="cell-title">
-                    <b>Reinforcing Steel</b>
-                    <span>13.1% of value &middot; $955.45/tonne</span>
-                  </div>
-                </div>
-              </td>
-              <td class="right muted">258</td>
-              <td class="right">268</td>
-              <td class="right strong">
-                3.91%
-                <div class="tiny dim">2.49–5.37</div>
-              </td>
-              <td class="right c-rose">$10,006</td>
-              <td class="right">$258,932</td>
-            </tr>
-            <tr>
-              <td>
-                <div class="row gap-8">
-                  <span class="swatch" style="background:var(--tone-3)"></span>
-                  <div class="cell-title">
-                    <b>Structural Steel</b>
-                    <span>30.6% of value &middot; $1,421.05/tonne</span>
-                  </div>
-                </div>
-              </td>
-              <td class="right muted">405</td>
-              <td class="right">416</td>
-              <td class="right strong">
-                2.71%
-                <div class="tiny dim">1.5–3.73</div>
-              </td>
-              <td class="right c-rose">$16,028</td>
-              <td class="right">$595,620</td>
-            </tr>
-            <tr>
-              <td>
-                <div class="row gap-8">
-                  <span class="swatch" style="background:var(--tone-3)"></span>
-                  <div class="cell-title">
-                    <b>Concrete Masonry Unit</b>
-                    <span>6.3% of value &middot; $3.06/unit</span>
-                  </div>
-                </div>
-              </td>
-              <td class="right muted">38,640</td>
-              <td class="right">41,236</td>
-              <td class="right strong">
-                6.3%
-                <div class="tiny dim">3.73–8.64</div>
-              </td>
-              <td class="right c-rose">$7,932</td>
-              <td class="right">$131,079</td>
-            </tr>
-            <tr>
-              <td>
-                <div class="row gap-8">
-                  <span class="swatch" style="background:var(--tone-4)"></span>
-                  <div class="cell-title">
-                    <b>Insulated Glazing Unit</b>
-                    <span>28.2% of value &middot; $302.64/m²</span>
-                  </div>
-                </div>
-              </td>
-              <td class="right muted">1,748</td>
-              <td class="right">1,835</td>
-              <td class="right strong">
-                4.73%
-                <div class="tiny dim">2.84–6.77</div>
-              </td>
-              <td class="right c-rose">$26,268</td>
-              <td class="right">$565,390</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="panel lift reveal">
-      <div class="panel-head">
-        <div><h3>Risk ranking</h3><div class="sub">Score out of 100</div></div>
-      </div>
-      <div class="stack gap-16">
-        <div class="risk-row">
-          <div class="row gap-8 mb-8">
-            <span class="swatch" style="background:var(--tone-4)"></span>
-            <b class="small">Insulated Glazing Unit</b>
-            <span class="badge rose ml-auto">
-              high · 65</span>
-          </div>
-          <div class="rail">
-            <div class="fill" data-fill="65"
-                 style="background:var(--tone-4)"></div>
-          </div>
-          <div class="tiny dim mt-8">drives 29% of the cost variance · damage-prone in handling · 56-day lead time</div>
-        </div>
-        <div class="risk-row">
-          <div class="row gap-8 mb-8">
-            <span class="swatch" style="background:var(--tone-3)"></span>
-            <b class="small">Structural Steel</b>
-            <span class="badge rose ml-auto">
-              high · 63</span>
-          </div>
-          <div class="rail">
-            <div class="fill" data-fill="63"
-                 style="background:var(--tone-3)"></div>
-          </div>
-          <div class="tiny dim mt-8">drives 54% of the cost variance · volatile unit price · 31% of package value · 45-day lead time</div>
-        </div>
-        <div class="risk-row">
-          <div class="row gap-8 mb-8">
-            <span class="swatch" style="background:var(--tone-1)"></span>
-            <b class="small">Ready-Mix Concrete</b>
-            <span class="badge mint ml-auto">
-              low · 32</span>
-          </div>
-          <div class="rail">
-            <div class="fill" data-fill="32"
-                 style="background:var(--tone-1)"></div>
-          </div>
-          <div class="tiny dim mt-8">stable and inside benchmark</div>
-        </div>
-        <div class="risk-row">
-          <div class="row gap-8 mb-8">
-            <span class="swatch" style="background:var(--tone-2)"></span>
-            <b class="small">Reinforcing Steel</b>
-            <span class="badge mint ml-auto">
-              low · 25</span>
-          </div>
-          <div class="rail">
-            <div class="fill" data-fill="25"
-                 style="background:var(--tone-2)"></div>
-          </div>
-          <div class="tiny dim mt-8">volatile unit price</div>
-        </div>
-        <div class="risk-row">
-          <div class="row gap-8 mb-8">
-            <span class="swatch" style="background:var(--tone-3)"></span>
-            <b class="small">Concrete Masonry Unit</b>
-            <span class="badge mint ml-auto">
-              low · 12</span>
-          </div>
-          <div class="rail">
-            <div class="fill" data-fill="12"
-                 style="background:var(--tone-3)"></div>
-          </div>
-          <div class="tiny dim mt-8">stable and inside benchmark</div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
 
 <!-- ══════════════════════════════════════════════════ 5. WHAT TO DO ══════ -->
-<section id="actions" class="section">
-  <div class="section-title reveal">
-    <h2>What to do</h2>
-    <span class="dim small">Ordered by what moves the number most</span>
-  </div>
-
-  <div class="grid g2 mb-24">
-    <div class="panel lift reveal advice violet">
-      <div class="row gap-12 mb-8">
-        <span class="rank">1</span>
-        <b>Carry a 9.2% contingency</b>
-      </div>
-      <p class="small muted" style="margin:0">A buffer of $184,996 takes the working budget to $2,199,738 and holds overrun risk at 10%.</p>
-    </div>
-    <div class="panel lift reveal advice amber">
-      <div class="row gap-12 mb-8">
-        <span class="rank">2</span>
-        <b>Put Insulated Glazing Unit under tighter control</b>
-      </div>
-      <p class="small muted" style="margin:0">It carries 29% of the cost variance and $26,268 of forecast waste. Tighten the takeoff, sequence deliveries and fix the price early.</p>
-    </div>
-    <div class="panel lift reveal advice cyan">
-      <div class="row gap-12 mb-8">
-        <span class="rank">3</span>
-        <b>Lock the long-lead items now</b>
-      </div>
-      <p class="small muted" style="margin:0">Structural Steel, Insulated Glazing Unit run 56 days or more. Ordering these late is the usual route into an overrun.</p>
-    </div>
-  </div>
-</section>
 
 <!-- ════════════════════════════════════════════════════ 6. MODEL CARD ════ -->
-<section id="model" class="section">
-  <div class="section-title reveal">
-    <h2>Model card</h2>
-    <span class="dim small">What was trained, on what, and how well it does</span>
-  </div>
-
-  <div class="grid g4 mb-24">
-    <div class="panel lift kpi reveal" style="min-height:126px"><div class="cap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
-     width="16" height="16" style="flex:none"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.6"/><circle cx="12" cy="12" r="1"/></svg> Waste R&sup2;</div>
-      <div class="val">0.699</div>
-      <div class="foot dim">MAE 1.89 pp</div>
-    </div>
-    <div class="panel lift kpi reveal" style="min-height:126px"><div class="cap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
-     width="16" height="16" style="flex:none"><path d="M12 3 4.5 6v6c0 4.6 3.1 8 7.5 9.2 4.4-1.2 7.5-4.6 7.5-9.2V6L12 3Z"/><path d="M9 12.2l2.2 2.2L15.2 10"/></svg> Overrun AUC</div>
-      <div class="val">0.900</div>
-      <div class="foot dim">Brier 0.127</div>
-    </div>
-    <div class="panel lift kpi reveal" style="min-height:126px"><div class="cap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
-     width="16" height="16" style="flex:none"><path d="M4 17a9 9 0 1 1 16 0"/><path d="M12 17l4-5"/><circle cx="12" cy="17" r="1.4"/></svg> Band coverage</div>
-      <div class="val">80.6<span class="unit">%</span></div>
-      <div class="foot dim">nominal 80%</div>
-    </div>
-    <div class="panel lift kpi reveal" style="min-height:126px"><div class="cap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
-     width="16" height="16" style="flex:none"><path d="M20.5 8.5v7l-8.5 5-8.5-5v-7l8.5-5 8.5 5Z"/><path d="M3.5 8.5 12 13.5l8.5-5M12 13.5v7"/></svg> Archive</div>
-      <div class="val">2.60K</div>
-      <div class="foot dim">14,349 material lines</div>
-    </div>
-  </div>
-
-  <div class="grid g3">
-
-        <div class="panel lift reveal">
-      <div class="panel-head"><div><h3>What drives the waste forecast</h3>
-        <div class="sub">Permutation importance</div></div></div>
-
-      <div class="lead-driver">
-        <div class="row gap-8">
-          <b>Material</b>
-          <span class="ml-auto mono">92.4%</span>
-        </div>
-        <div class="tiny dim mt-8">Dominant by a wide margin &mdash; it sets the baseline
-          the rest only modulate.</div>
-      </div>
-
-      <div class="tiny dim mt-16 mb-16" style="letter-spacing:.12em;text-transform:uppercase">
-        Beyond that, ranked among themselves</div>
-      <div class="meters">
-        <div class="meter">
-          <div class="top"><span class="name">Project Type</span>
-            <span class="value">6.11%</span></div>
-          <div class="rail"><div class="fill" data-fill="100.0"
-               style="background:var(--tone-2)"></div></div>
-        </div>
-        <div class="meter">
-          <div class="top"><span class="name">Project Size</span>
-            <span class="value">0.59%</span></div>
-          <div class="rail"><div class="fill" data-fill="9.7"
-               style="background:var(--tone-2)"></div></div>
-        </div>
-        <div class="meter">
-          <div class="top"><span class="name">Budget vs Benchmark</span>
-            <span class="value">0.42%</span></div>
-          <div class="rail"><div class="fill" data-fill="6.9"
-               style="background:var(--tone-2)"></div></div>
-        </div>
-        <div class="meter">
-          <div class="top"><span class="name">Duration</span>
-            <span class="value">0.29%</span></div>
-          <div class="rail"><div class="fill" data-fill="4.8"
-               style="background:var(--tone-2)"></div></div>
-        </div>
-        <div class="meter">
-          <div class="top"><span class="name">Materials in Package</span>
-            <span class="value">0.11%</span></div>
-          <div class="rail"><div class="fill" data-fill="1.8"
-               style="background:var(--tone-2)"></div></div>
-        </div>
-        <div class="meter">
-          <div class="top"><span class="name">Share of Package Value</span>
-            <span class="value">0.04%</span></div>
-          <div class="rail"><div class="fill" data-fill="0.6"
-               style="background:var(--tone-2)"></div></div>
-        </div>
-      </div>
-    </div>
-
-        <div class="panel lift reveal">
-      <div class="panel-head"><div><h3>What drives overrun risk</h3>
-        <div class="sub">Permutation importance</div></div></div>
-
-      <div class="lead-driver">
-        <div class="row gap-8">
-          <b>Budget vs Benchmark</b>
-          <span class="ml-auto mono">96.8%</span>
-        </div>
-        <div class="tiny dim mt-8">Dominant by a wide margin &mdash; it sets the baseline
-          the rest only modulate.</div>
-      </div>
-
-      <div class="tiny dim mt-16 mb-16" style="letter-spacing:.12em;text-transform:uppercase">
-        Beyond that, ranked among themselves</div>
-      <div class="meters">
-        <div class="meter">
-          <div class="top"><span class="name">Location</span>
-            <span class="value">0.90%</span></div>
-          <div class="rail"><div class="fill" data-fill="100.0"
-               style="background:var(--tone-3)"></div></div>
-        </div>
-        <div class="meter">
-          <div class="top"><span class="name">Forecast Waste</span>
-            <span class="value">0.61%</span></div>
-          <div class="rail"><div class="fill" data-fill="67.5"
-               style="background:var(--tone-3)"></div></div>
-        </div>
-        <div class="meter">
-          <div class="top"><span class="name">Mix Concentration</span>
-            <span class="value">0.53%</span></div>
-          <div class="rail"><div class="fill" data-fill="59.1"
-               style="background:var(--tone-3)"></div></div>
-        </div>
-        <div class="meter">
-          <div class="top"><span class="name">Build Rate (m²/week)</span>
-            <span class="value">0.48%</span></div>
-          <div class="rail"><div class="fill" data-fill="53.3"
-               style="background:var(--tone-3)"></div></div>
-        </div>
-        <div class="meter">
-          <div class="top"><span class="name">Fragile Material Share</span>
-            <span class="value">0.25%</span></div>
-          <div class="rail"><div class="fill" data-fill="27.1"
-               style="background:var(--tone-3)"></div></div>
-        </div>
-        <div class="meter">
-          <div class="top"><span class="name">Project Size</span>
-            <span class="value">0.21%</span></div>
-          <div class="rail"><div class="fill" data-fill="23.8"
-               style="background:var(--tone-3)"></div></div>
-        </div>
-      </div>
-    </div>
-
-
-    <div class="panel lift reveal">
-      <div class="panel-head"><div><h3>Is the probability honest?</h3>
-        <div class="sub">Predicted risk against observed overrun rate</div></div></div>
-      <div class="chart" id="reliability-chart"></div>
-      <p class="tiny dim mt-8" style="margin:0">Points on the dashed line mean that when the model
-        says 40%, roughly 40% of those projects really did overrun.</p>
-    </div>
-  </div>
-
-</section>
 </main>
 
 <script src="static/js/charts.js"></script>
@@ -1052,7 +755,6 @@ const STATE = {
   p90: 2199738.21,
   risk: 44.1,
   colour: 'var(--tone-2)',
-  reliability: [{"n": 113, "observed": 3.5, "predicted": 4.1}, {"n": 71, "observed": 15.5, "predicted": 14.9}, {"n": 35, "observed": 22.9, "predicted": 24.3}, {"n": 23, "observed": 43.5, "predicted": 34.9}, {"n": 30, "observed": 43.3, "predicted": 45.5}, {"n": 39, "observed": 46.2, "predicted": 55.7}, {"n": 32, "observed": 53.1, "predicted": 64.9}, {"n": 27, "observed": 85.2, "predicted": 74.7}, {"n": 30, "observed": 96.7, "predicted": 84.8}, {"n": 120, "observed": 91.7, "predicted": 96.1}],
   units: {"asphalt_mix": "tonne", "ceramic_tile": "m\u00b2", "clay_brick": "1000 units", "cmu_block": "unit", "copper_piping": "m", "dimensional_lumber": "m\u00b3", "electrical_conduit": "m", "glazing_unit": "m\u00b2", "gypsum_drywall": "sheet", "interior_paint": "L", "membrane_roofing": "m\u00b2", "mineral_wool": "m\u00b2", "plywood_sheathing": "sheet", "ready_mix_concrete": "m\u00b3", "rebar_steel": "tonne", "structural_steel": "tonne"},
 };
 
@@ -1072,17 +774,6 @@ function paint() {
     label: 'chance of overrun', format: (v) => `${v.toFixed(0)}%`,
   });
 
-  if (STATE.reliability.length) {
-    MC.scatter(document.getElementById('reliability-chart'), {
-      height: 240,
-      points: STATE.reliability.map((p) => ({
-        x: p.predicted, y: p.observed, r: p.n, accent: 'var(--tone-3)', label: `${p.n} projects`,
-      })),
-      xLabel: 'Predicted', yLabel: 'Observed',
-      xFormat: (v) => `${v.toFixed(0)}%`, yFormat: (v) => `${v.toFixed(0)}%`,
-      diagonal: true, max: 100,
-    });
-  }
 }
 paint();
 document.addEventListener('mcwp:theme', () => setTimeout(paint, 60));

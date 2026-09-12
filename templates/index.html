@@ -23,16 +23,78 @@
 <!-- ═══════════════════════════════════════════════ 1. PROJECT BRIEF ══════ -->
 <section id="brief" class="section">
   <script id="unit-map" type="application/json">{{ units|tojson }}</script>
+{% macro model_logo(key) %}
+  {% if key == 'random_forest' %}
+  <svg class="model-logo" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+    <path d="M9 21 5.5 15.5h2L4.5 10.5h3L5 6h8l-2.5 4.5h3l-3 5h2L9 21Z" fill="var(--tone-4)"/>
+    <path d="M22 23 18 16.5h2.3L16.8 10.8h2.6L16.5 6h9l-2.9 4.8h2.6l-3.5 5.7H24L22 23Z" fill="var(--tone-3)"/>
+    <rect x="8.2" y="20.5" width="1.6" height="5" rx="0.6" fill="var(--dim)"/>
+    <rect x="21.2" y="22.5" width="1.6" height="3.5" rx="0.6" fill="var(--dim)"/>
+  </svg>
+  {% elif key == 'xgboost' %}
+  <svg class="model-logo" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+    <rect x="4" y="20" width="5" height="7" rx="1.2" fill="var(--tone-5)" opacity="0.55"/>
+    <rect x="11" y="15" width="5" height="12" rx="1.2" fill="var(--tone-5)" opacity="0.75"/>
+    <rect x="18" y="10" width="5" height="17" rx="1.2" fill="var(--tone-5)"/>
+    <path d="M5 17.5 13 12l7 4.5L28 6" stroke="var(--tone-2)" stroke-width="2.1"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M23.5 6H28v4.5" stroke="var(--tone-2)" stroke-width="2.1"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+  {% else %}
+  <svg class="model-logo" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+    <rect x="3.5" y="18" width="4.4" height="9" rx="1" fill="var(--tone-3)" opacity="0.5"/>
+    <rect x="9.4" y="12" width="4.4" height="15" rx="1" fill="var(--tone-3)" opacity="0.7"/>
+    <rect x="15.3" y="7" width="4.4" height="20" rx="1" fill="var(--tone-3)"/>
+    <rect x="21.2" y="13" width="4.4" height="14" rx="1" fill="var(--tone-3)" opacity="0.7"/>
+    <rect x="27.1" y="19" width="4" height="8" rx="1" fill="var(--tone-3)" opacity="0.5"/>
+  </svg>
+  {% endif %}
+{% endmacro %}
+{% set chosen = (model_backends | selectattr('key', 'equalto', r.model.backend) | list | first) or model_backends[0] %}
+
   <div class="panel tight reveal mb-16">
     <div class="row gap-12 wrap" style="align-items:center">
       <label for="f-backend" style="font-weight:600">Prediction model</label>
-      <select class="input" name="backend" id="f-backend" form="brief-form"
-              style="max-width:340px">
+
+      <select class="sr-only" name="backend" id="f-backend" form="brief-form"
+              tabindex="-1" aria-hidden="true">
         {% for b in model_backends %}
-        <option value="{{ b.key }}"{% if b.key == r.model.backend %} selected{% endif %}{% if not b.available %} disabled{% endif %}>
-          {{ b.label }}{% if not b.available %} - not installed{% elif b.r2 %} - R&sup2; {{ b.r2 }} / AUC {{ b.auc }}{% endif %}</option>
+        <option value="{{ b.key }}"{% if b.key == r.model.backend %} selected{% endif %}{% if not b.available %} disabled{% endif %}>{{ b.label }}</option>
         {% endfor %}
       </select>
+
+      <div class="model-pick" id="model-pick" data-open="false">
+        <button type="button" class="model-pick-btn" aria-haspopup="listbox"
+                aria-expanded="false" aria-labelledby="f-backend-label">
+          <span data-pick-logo>{{ model_logo(chosen.key) }}</span>
+          <span class="model-text">
+            <b data-pick-label>{{ chosen.label }}</b>
+            <span data-pick-meta>{{ chosen.library }}{% if chosen.r2 %} &middot; R&sup2; {{ chosen.r2 }} / AUC {{ chosen.auc }}{% endif %}</span>
+          </span>
+          <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+               stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+
+        <ul class="model-pick-menu" role="listbox" aria-label="Prediction model" hidden>
+          {% for b in model_backends %}
+          <li role="option" data-value="{{ b.key }}"
+              aria-selected="{{ 'true' if b.key == r.model.backend else 'false' }}"
+              {% if not b.available %}aria-disabled="true"{% endif %}>
+            {{ model_logo(b.key) }}
+            <span class="model-text">
+              <b>{{ b.label }}</b>
+              <span>{{ b.library }}{% if not b.available %} &middot; not installed{% elif b.r2 %} &middot; R&sup2; {{ b.r2 }} / AUC {{ b.auc }}{% endif %}</span>
+            </span>
+            <svg class="tick" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.4" stroke-linecap="round"
+                 stroke-linejoin="round" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+
       <span class="tiny dim">Swaps the learner behind every figure on this page.
         Compare them with <code>python tools/compare_models.py</code>.</span>
     </div>
@@ -352,170 +414,10 @@
 </section>
 
 <!-- ═══════════════════════════════════════════ 4. MATERIALS AT RISK ══════ -->
-<section id="materials" class="section">
-  <div class="section-title reveal">
-    <h2>Materials at risk</h2>
-    <span class="dim small">Ranked by money at stake, forecast uncertainty and price exposure</span>
-  </div>
-
-  <div class="grid g-7-5 mb-24">
-    <div class="panel lift flush reveal">
-      <div class="panel-head" style="padding:22px 22px 0;margin-bottom:14px">
-        <div><h3>Line-by-line forecast</h3>
-          <div class="sub">Order quantities already include the predicted waste</div></div>
-      </div>
-      <div class="table-wrap">
-        <table class="data">
-          <thead><tr>
-            <th>Material</th><th class="right">Installed</th><th class="right">Order</th>
-            <th class="right">Waste</th><th class="right">Wasted value</th><th class="right">Line cost</th>
-          </tr></thead>
-          <tbody>
-            {% for line in r.lines %}
-            <tr>
-              <td>
-                <div class="row gap-8">
-                  <span class="swatch" style="background:{{ line.accent }}"></span>
-                  <div class="cell-title">
-                    <b>{{ line.name }}</b>
-                    <span>{{ line.value_share }}% of value &middot; {{ SYMBOL }}{{ line.unit_price|num(2) }}/{{ line.unit }}</span>
-                  </div>
-                </div>
-              </td>
-              <td class="right muted">{{ line.quantity|num(0) }}</td>
-              <td class="right">{{ line.order_qty|num(0) }}</td>
-              <td class="right strong">
-                {{ line.waste_pct }}%
-                <div class="tiny dim">{{ line.waste_low }}–{{ line.waste_high }}</div>
-              </td>
-              <td class="right c-rose">{{ line.wasted_value|money }}</td>
-              <td class="right">{{ line.total|money }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="panel lift reveal">
-      <div class="panel-head">
-        <div><h3>Risk ranking</h3><div class="sub">Score out of 100</div></div>
-      </div>
-      <div class="stack gap-16">
-        {% for risk in r.risks %}
-        <div class="risk-row">
-          <div class="row gap-8 mb-8">
-            <span class="swatch" style="background:{{ risk.accent }}"></span>
-            <b class="small">{{ risk.name }}</b>
-            <span class="badge {{ 'rose' if risk.band == 'high' else 'amber' if risk.band == 'medium' else 'mint' }} ml-auto">
-              {{ risk.band }} · {{ risk.score }}</span>
-          </div>
-          <div class="rail">
-            <div class="fill" data-fill="{{ risk.score }}"
-                 style="background:{{ risk.accent }}"></div>
-          </div>
-          <div class="tiny dim mt-8">{{ risk.reasons|join(' · ') }}</div>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-  </div>
-</section>
 
 <!-- ══════════════════════════════════════════════════ 5. WHAT TO DO ══════ -->
-<section id="actions" class="section">
-  <div class="section-title reveal">
-    <h2>What to do</h2>
-    <span class="dim small">Ordered by what moves the number most</span>
-  </div>
-
-  <div class="grid g2 mb-24">
-    {% for item in r.advice %}
-    <div class="panel lift reveal advice {{ item.tone }}">
-      <div class="row gap-12 mb-8">
-        <span class="rank">{{ loop.index }}</span>
-        <b>{{ item.title }}</b>
-      </div>
-      <p class="small muted" style="margin:0">{{ item.detail }}</p>
-    </div>
-    {% endfor %}
-  </div>
-</section>
 
 <!-- ════════════════════════════════════════════════════ 6. MODEL CARD ════ -->
-<section id="model" class="section">
-  <div class="section-title reveal">
-    <h2>Model card</h2>
-    <span class="dim small">What was trained, on what, and how well it does</span>
-  </div>
-
-  <div class="grid g4 mb-24">
-    <div class="panel lift kpi reveal" style="min-height:126px"><div class="cap">{{ icon('target') }} Waste R&sup2;</div>
-      <div class="val">{{ '%.3f'|format(metrics.waste.r2) }}</div>
-      <div class="foot dim">MAE {{ metrics.waste.mae_pp|num(2) }} pp</div>
-    </div>
-    <div class="panel lift kpi reveal" style="min-height:126px"><div class="cap">{{ icon('shield') }} Overrun AUC</div>
-      <div class="val">{{ '%.3f'|format(metrics.overrun.auc) }}</div>
-      <div class="foot dim">Brier {{ '%.3f'|format(metrics.overrun.brier) }}</div>
-    </div>
-    <div class="panel lift kpi reveal" style="min-height:126px"><div class="cap">{{ icon('gauge') }} Band coverage</div>
-      <div class="val">{{ metrics.waste.coverage_80|num(1) }}<span class="unit">%</span></div>
-      <div class="foot dim">nominal 80%</div>
-    </div>
-    <div class="panel lift kpi reveal" style="min-height:126px"><div class="cap">{{ icon('box') }} Archive</div>
-      <div class="val">{{ metrics.corpus_projects|compact }}</div>
-      <div class="foot dim">{{ metrics.corpus_lines|num(0) }} material lines</div>
-    </div>
-  </div>
-
-  <div class="grid g3">
-    {% macro importance(title, rows, gradient) %}
-    {% set lead = rows[0] %}
-    {% set rest = rows[1:7] %}
-    {% set rest_top = rest[0].share if rest and rest[0].share > 0 else 1 %}
-    <div class="panel lift reveal">
-      <div class="panel-head"><div><h3>{{ title }}</h3>
-        <div class="sub">Permutation importance</div></div></div>
-
-      <div class="lead-driver">
-        <div class="row gap-8">
-          <b>{{ lead.label }}</b>
-          <span class="ml-auto mono">{{ (lead.share * 100)|num(1) }}%</span>
-        </div>
-        <div class="tiny dim mt-8">Dominant by a wide margin &mdash; it sets the baseline
-          the rest only modulate.</div>
-      </div>
-
-      <div class="tiny dim mt-16 mb-16" style="letter-spacing:.12em;text-transform:uppercase">
-        Beyond that, ranked among themselves</div>
-      <div class="meters">
-        {% for feature in rest %}
-        <div class="meter">
-          <div class="top"><span class="name">{{ feature.label }}</span>
-            <span class="value">{{ (feature.share * 100)|num(2) }}%</span></div>
-          <div class="rail"><div class="fill" data-fill="{{ (feature.share / rest_top * 100)|round(1) }}"
-               style="background:{{ gradient }}"></div></div>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-    {% endmacro %}
-
-    {{ importance('What drives the waste forecast', metrics_importance_waste,
-                  'var(--tone-2)') }}
-    {{ importance('What drives overrun risk', metrics_importance_overrun,
-                  'var(--tone-3)') }}
-
-    <div class="panel lift reveal">
-      <div class="panel-head"><div><h3>Is the probability honest?</h3>
-        <div class="sub">Predicted risk against observed overrun rate</div></div></div>
-      <div class="chart" id="reliability-chart"></div>
-      <p class="tiny dim mt-8" style="margin:0">Points on the dashed line mean that when the model
-        says 40%, roughly 40% of those projects really did overrun.</p>
-    </div>
-  </div>
-
-</section>
 {% endblock %}
 
 {% block scripts %}
@@ -527,7 +429,6 @@ const STATE = {
   p90: {{ r.overrun.p90 }},
   risk: {{ r.overrun.probability }},
   colour: '{{ r.overrun.verdict.colour }}',
-  reliability: {{ reliability|tojson }},
   units: {{ units|tojson }},
 };
 
@@ -547,17 +448,6 @@ function paint() {
     label: 'chance of overrun', format: (v) => `${v.toFixed(0)}%`,
   });
 
-  if (STATE.reliability.length) {
-    MC.scatter(document.getElementById('reliability-chart'), {
-      height: 240,
-      points: STATE.reliability.map((p) => ({
-        x: p.predicted, y: p.observed, r: p.n, accent: 'var(--tone-3)', label: `${p.n} projects`,
-      })),
-      xLabel: 'Predicted', yLabel: 'Observed',
-      xFormat: (v) => `${v.toFixed(0)}%`, yFormat: (v) => `${v.toFixed(0)}%`,
-      diagonal: true, max: 100,
-    });
-  }
 }
 paint();
 document.addEventListener('mcwp:theme', () => setTimeout(paint, 60));

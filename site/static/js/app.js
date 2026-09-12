@@ -349,6 +349,52 @@
     });
   }
 
+  /* ---------------------------------------------------- model picker ----- */
+  /* A native <select> cannot show a logo in its options. The select stays in
+     the DOM (off-screen) so the form still owns the value and app.js reads it
+     as before; this listbox draws over it and writes back on choice. */
+
+  const pick = $("#model-pick");
+  if (pick) {
+    const select = $("#f-backend");
+    const button = $(".model-pick-btn", pick);
+    const menu = $(".model-pick-menu", pick);
+    const options = $$("li[role='option']", menu);
+
+    const open = (state) => {
+      pick.dataset.open = String(state);
+      menu.hidden = !state;
+      button.setAttribute("aria-expanded", String(state));
+    };
+
+    const choose = (value) => {
+      const option = options.find((o) => o.dataset.value === value);
+      if (!option || option.getAttribute("aria-disabled") === "true") return;
+
+      options.forEach((o) => o.setAttribute("aria-selected", String(o === option)));
+      $("[data-pick-logo]", button).innerHTML = $("svg.model-logo", option).outerHTML;
+      $("[data-pick-label]", button).textContent = $("b", option).textContent.trim();
+      $("[data-pick-meta]", button).textContent =
+        $(".model-text span", option).textContent.trim();
+
+      if (select.value !== value) {
+        select.value = value;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      open(false);
+    };
+
+    button.addEventListener("click", () => open(menu.hidden));
+    options.forEach((o) => o.addEventListener("click", () => choose(o.dataset.value)));
+
+    document.addEventListener("click", (event) => {
+      if (!pick.contains(event.target)) open(false);
+    });
+    pick.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") { open(false); button.focus(); }
+    });
+  }
+
   /* ------------------------------------------------------- table search -- */
 
   const filter = $("[data-table-filter]");

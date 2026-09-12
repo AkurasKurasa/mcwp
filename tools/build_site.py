@@ -78,6 +78,15 @@ def main() -> None:
 
     html = re.sub(r'<select[^>]*name="backend"[^>]*>.*?</select>',
                   scope_to_backend_select, html, flags=re.S)
+
+    # the visible listbox needs the same treatment as the hidden select
+    def disable_li(match):
+        row = match.group(0)
+        if 'data-value="hist_gradient_boosting"' in row or "aria-disabled" in row:
+            return row
+        return row.replace("<li ", '<li aria-disabled="true" ', 1)
+
+    html = re.sub(r'<li role="option"[^>]*>', disable_li, html)
     html = html.replace(
         "Swaps the learner behind every figure on this page.",
         "This build runs entirely in your browser and carries only the "
