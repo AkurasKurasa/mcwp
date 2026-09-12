@@ -266,6 +266,10 @@
       project_area: form.elements.project_area.value,
       duration_weeks: form.elements.duration_weeks.value,
       budget: form.elements.budget.value,
+      storage_m2: form.elements.storage_m2 ? form.elements.storage_m2.value : "",
+      rain_days: form.elements.rain_days ? form.elements.rain_days.value : "",
+      experience_years: form.elements.experience_years
+        ? form.elements.experience_years.value : "",
       backend: form.elements.backend ? form.elements.backend.value : "",
       lines: $$(".line-row", linesHost).map((row) => ({
         material: $("select", row).value,

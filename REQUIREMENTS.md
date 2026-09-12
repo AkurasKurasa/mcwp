@@ -21,6 +21,7 @@ at a target.
 - **FR-1** — State project name, type, location, floor area, duration and material budget.
 - **FR-2** — Choose from 9 project types, 8 regions (each with a cost and labour index), and up to 10 material lines drawn from a 16-material catalogue.
 - **FR-3** — With no budget stated, judge the package against its own benchmark cost.
+- **FR-3a** — State the site conditions that drive waste: on-site covered storage (m²), rain frequency (wet days/month) and contractor experience (years).
 - **FR-4** — Suggest a starting materials list for the project type and size, and offer worked examples.
 
 **Output**
@@ -34,6 +35,8 @@ at a target.
 - **FR-11** — Give ordered, concrete actions tied to the numbers.
 - **FR-12** — Report waste tonnage and embodied CO₂e.
 - **FR-13** — Update predictions live as the brief is edited, with no page reload.
+- **FR-17** — Show how much of the overrun risk sits in the three site conditions: each factor's swing between its worst and best case, and the points recoverable from where it stands now.
+- **FR-18** — Give a written recommendation of what to do, as a paragraph plus an ordered breakdown tied to the figures.
 
 **Behaviour**
 
@@ -49,17 +52,21 @@ or failed.
 
 | ID | Requirement | Measured |
 |---|---|---|
-| NFR-1 | Waste model accuracy | R² 0.699 · MAE 1.89pp |
-| NFR-2 | The 80% interval covers 80% of outcomes | 80.6% |
-| NFR-3 | Overrun classifier ranks risk reliably | AUC 0.900 · Brier 0.127 |
+| NFR-1 | Waste model accuracy | R² 0.807 · MAE 1.51pp |
+| NFR-2 | The 80% interval covers 80% of outcomes | 79.6% |
+| NFR-3 | Overrun classifier ranks risk reliably | AUC 0.899 · Brier 0.130 |
 
 Per backend, on the same held-out split:
 
 | Backend | R² | MAE pp | Cover% | Calib | AUC | Brier | Fit s | Browser |
 |---|---|---|---|---|---|---|---|---|
-| Random Forest *(default)* | 0.699 | 1.90 | 79.8 | 1.00 | 0.898 | 0.130 | 68 | no |
-| XGBoost | 0.684 | 1.93 | 80.1 | 1.15 | 0.894 | 0.134 | 133 | no |
-| HistGradientBoosting | 0.699 | 1.89 | 80.6 | 1.15 | 0.900 | 0.127 | 52 | yes |
+| Random Forest *(default)* | 0.797 | 1.55 | 79.1 | 0.95 | 0.898 | 0.134 | 50 | no |
+| XGBoost | 0.803 | 1.53 | 80.7 | 1.25 | 0.889 | 0.141 | 35 | no |
+| HistGradientBoosting | 0.807 | 1.51 | 79.6 | 1.20 | 0.899 | 0.130 | 48 | yes |
+
+Adding the three site conditions moved waste R² from 0.699 to 0.797–0.807 and MAE
+from ~1.90pp to ~1.51pp: they were previously latent in the generator, so the model
+was carrying them as noise.
 
 - **NFR-4** — Split by project, so none appears in both training and test data; the classifier consumes out-of-fold waste forecasts.
 - **NFR-5** — Cost distribution from 4,000 Monte Carlo draws; contingency sized to 10% overrun risk.

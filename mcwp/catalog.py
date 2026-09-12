@@ -142,6 +142,7 @@ LINE_FEATURES = [
     "material", "project_type", "region",
     "quantity_log", "project_area_log", "duration_weeks",
     "line_count", "line_value_share", "budget_ratio", "schedule_intensity",
+    "storage_ratio", "rain_days", "experience_years",
 ]
 
 LINE_CATEGORICALS = ["material", "project_type", "region"]
@@ -153,6 +154,7 @@ PROJECT_FEATURES = [
     "project_area_log", "duration_weeks", "line_count",
     "budget_ratio", "budget_per_m2", "schedule_intensity",
     "expected_waste", "mix_concentration", "fragile_share", "volatility_weighted",
+    "storage_ratio", "rain_days", "experience_years",
 ]
 
 PROJECT_CATEGORICALS = ["project_type", "region"]
@@ -179,4 +181,8 @@ FEATURE_LABELS = {
     "mix_concentration": "Mix Concentration",
     "fragile_share": "Fragile Material Share",
     "volatility_weighted": "Price Volatility Exposure",
+    "storage_ratio": "Storage Adequacy",
+    "storage_m2": "Storage Size",
+    "rain_days": "Rain Frequency",
+    "experience_years": "Contractor Experience",
 }

@@ -171,6 +171,28 @@ class Bundle:
             "high": np.clip(np.maximum(high, centre * 1.01), 0.002, 0.72),
         }
 
+    def predict_center(self, records) -> np.ndarray:
+        """Central waste forecast only.
+
+        The sensitivity sweep needs the expected waste, not the interval, and
+        the interval is the expensive half - three models for the boosters, a
+        per-row leaf pool for the forest.
+        """
+        frame = self._spec().prepare(line_features(records))
+        return np.clip(self.waste.predict(frame), 0.002, 0.60)
+
+    def predict_overrun_many(self, records) -> np.ndarray:
+        """Overrun probability for several projects in one pass.
+
+        sklearn routes every tree through joblib even at n_jobs=1, so the
+        per-call overhead dwarfs the trees on a handful of rows. One call of
+        many rows costs a fraction of many calls of one row.
+        """
+        frame = self._spec().prepare(project_features(list(records)))
+        if self.project_columns:
+            frame = frame.reindex(columns=self.project_columns, fill_value=0)
+        return self.overrun.predict_proba(frame)[:, 1]
+
     def predict_overrun(self, record: dict) -> float:
         frame = self._spec().prepare(project_features([record]))
         if self.project_columns:
@@ -219,6 +241,23 @@ def _importance(estimator, x, y, logical_features, raw_columns, scoring) -> list
     return rows
 
 
+def _single_threaded(bundle: "Bundle") -> "Bundle":
+    """Predict on one thread.
+
+    n_jobs=-1 is right for fitting and badly wrong for inference here: the app
+    predicts a handful of rows at a time, where joblib's worker dispatch costs
+    far more than the trees do. Measured at 155ms for a five-row forest
+    predict, against a few ms single-threaded.
+    """
+    seen = [bundle.overrun, getattr(bundle.waste, "estimator", None),
+            getattr(bundle.waste, "forest", None), getattr(bundle.waste, "center", None),
+            getattr(bundle.waste, "lower", None), getattr(bundle.waste, "upper", None)]
+    for est in seen:
+        if est is not None and hasattr(est, "n_jobs"):
+            est.n_jobs = 1
+    return bundle
+
+
 def get_bundle(backend: str | None = None) -> Bundle:
     key = backend or MODEL_BACKEND
     if key in _CACHE:
@@ -227,7 +266,7 @@ def get_bundle(backend: str | None = None) -> Bundle:
     path = model_path(key)
     if path.exists():
         try:
-            _CACHE[key] = joblib.load(path)
+            _CACHE[key] = _single_threaded(joblib.load(path))
             return _CACHE[key]
         except Exception:  # pragma: no cover - stale artefact, refit below
             pass
@@ -235,7 +274,7 @@ def get_bundle(backend: str | None = None) -> Bundle:
     projects, lines = build_corpus()
     bundle = Bundle.fit(projects, lines, backend=key)
     bundle.save()
-    _CACHE[key] = bundle
+    _CACHE[key] = _single_threaded(bundle)
     return bundle
 
 

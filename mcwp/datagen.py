@@ -37,8 +37,14 @@ def _clip(v, lo, hi):
 
 
 def latent_waste(material, ptype, region, quantity, area, duration,
-                 line_count, budget_ratio, hidden) -> float:
-    """Waste fraction for one material line, given observed and hidden state."""
+                 line_count, budget_ratio, site, hidden) -> float:
+    """Waste fraction for one material line, given observed and hidden state.
+
+    `site` carries what the engineer can state at bid time about conditions:
+    covered storage, how often it rains, and how experienced the contractor is.
+    `hidden` keeps what they cannot - design churn, coordination maturity,
+    prefabrication - which is what the interval and the buffer exist to cover.
+    """
     w = material.base_waste * ptype.waste_multiplier
 
     # Observable structure ---------------------------------------------------
@@ -57,15 +63,22 @@ def latent_waste(material, ptype, region, quantity, area, duration,
     # Regional labour markets: expensive labour is usually more productive.
     w *= 1.0 - 0.035 * (region.labor_index - 1.0)
 
+    # Stated site conditions -------------------------------------------------
+    # An experienced contractor wastes less, with diminishing returns.
+    w *= 1.0 - 0.10 * np.tanh((site["experience_years"] - 12.0) / 12.0)
+    # Covered storage, against what a job this size needs. Too little and
+    # material sits in the weather and gets damaged, double-handled, lost.
+    w *= 1.0 - 0.09 * np.tanh(site["storage_ratio"] - 1.0)
+    # Rain costs most on the materials that mind it: boards swell, renders
+    # wash, insulation wets out. Structural steel barely notices.
+    w *= 1.0 + 0.0075 * site["rain_days"] * (0.35 + material.fragility)
+
     # Hidden state the engineer cannot state at bid time ---------------------
-    w *= 1.0 + 0.060 * (6.5 - hidden["crew"]) / 5.5
-    w *= 1.0 - 0.050 * (hidden["storage"] - 5.0) / 5.0
     w *= 1.0 + 0.0150 * hidden["design_changes"] ** 0.9
     w *= 0.90 if hidden["bim"] else 1.0
     w *= 0.87 if hidden["waste_program"] else 1.0
     w *= 1.0 - 0.0032 * hidden["prefab"]
     w *= 1.0 + 0.00040 * hidden["transport_km"] * (0.4 + material.fragility)
-    w *= hidden["season_factor"] if material.fragility > 0.2 else 1.0
 
     return _clip(w, 0.004, 0.48)
 
@@ -93,7 +106,6 @@ def benchmark_cost(lines, region, escalation: float = 1.0) -> float:
 def build_corpus(n_projects: int = CORPUS_PROJECTS, seed: int = RANDOM_SEED):
     """Return (project_frame, line_frame) for training."""
     rng = np.random.default_rng(seed)
-    seasons = [1.00, 1.03, 1.01, 1.11]
 
     project_rows, line_rows = [], []
     start = date(2023, 1, 1)
@@ -124,15 +136,22 @@ def build_corpus(n_projects: int = CORPUS_PROJECTS, seed: int = RANDOM_SEED):
         budget_ratio_true = float(_clip(rng.normal(1.02, 0.13), 0.68, 1.55))
         budget = benchmark * budget_ratio_true
 
+        # What the engineer can state about the site.
+        storage_need = max(0.02 * area, 12.0)
+        storage_m2 = _clip(storage_need * rng.lognormal(0.0, 0.55), 10, 8000)
+        site = {
+            "storage_m2": storage_m2,
+            "storage_ratio": storage_m2 / storage_need,
+            "rain_days": _clip(rng.normal(8.0, 4.5), 0, 28),
+            "experience_years": _clip(rng.gamma(3.0, 5.0), 1, 40),
+        }
+
         hidden = {
-            "crew": _clip(rng.normal(6.4, 1.8), 1, 10),
-            "storage": _clip(rng.normal(6.0, 1.7), 1, 10),
             "design_changes": float(rng.poisson(6 + 0.06 * duration)),
             "bim": int(rng.random() < 0.42),
             "waste_program": int(rng.random() < 0.30),
             "prefab": _clip(rng.gamma(2.0, 9.0), 0, 85),
             "transport_km": _clip(rng.gamma(2.0, 70.0), 3, 2000),
-            "season_factor": seasons[(completed.month // 3) % 4],
         }
 
         gross_values = []
@@ -148,9 +167,13 @@ def build_corpus(n_projects: int = CORPUS_PROJECTS, seed: int = RANDOM_SEED):
             share = gross / total_gross
 
             true_waste = latent_waste(material, ptype, region, quantity, area,
-                                      duration, line_count, budget_ratio_true, hidden)
-            # Heteroscedastic noise: disorderly jobs are also less predictable.
-            sigma = 0.14 + 0.014 * (10 - hidden["crew"]) + 0.010 * (10 - hidden["storage"])
+                                      duration, line_count, budget_ratio_true,
+                                      site, hidden)
+            # Heteroscedastic noise: green crews and cramped sites are also
+            # less predictable, not just worse on average.
+            sigma = (0.14
+                     + 0.10 * max(1.0 - site["experience_years"] / 14.0, 0.0)
+                     + 0.07 * max(1.0 - site["storage_ratio"], 0.0))
             realised_waste = _clip(true_waste * rng.lognormal(-0.5 * sigma ** 2, sigma),
                                    0.002, 0.60)
 
@@ -176,6 +199,10 @@ def build_corpus(n_projects: int = CORPUS_PROJECTS, seed: int = RANDOM_SEED):
                 "line_value_share": share,
                 "budget_ratio": budget_ratio_true,
                 "schedule_intensity": area / max(duration, 1.0),
+                "storage_ratio": site["storage_ratio"],
+                "storage_m2": site["storage_m2"],
+                "rain_days": site["rain_days"],
+                "experience_years": site["experience_years"],
                 "waste_pct": realised_waste,
                 "unit_price": unit_price,
                 "line_cost": stack["total"],
@@ -204,6 +231,10 @@ def build_corpus(n_projects: int = CORPUS_PROJECTS, seed: int = RANDOM_SEED):
             "budget_ratio": budget_ratio_true,
             "budget_per_m2": budget / max(area, 1.0),
             "schedule_intensity": area / max(duration, 1.0),
+            "storage_ratio": site["storage_ratio"],
+            "storage_m2": site["storage_m2"],
+            "rain_days": site["rain_days"],
+            "experience_years": site["experience_years"],
             "mix_concentration": float(np.sum(shares ** 2)),
             "fragile_share": float(fragile),
             "volatility_weighted": float(vol),

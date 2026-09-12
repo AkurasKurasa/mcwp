@@ -108,7 +108,8 @@
     var rg = String(raw.region || "").trim();
     clean.region = REGION[rg] ? rg : M.defaults.region;
 
-    ["project_area", "duration_weeks", "budget"].forEach(function (f) {
+    ["project_area", "duration_weeks", "budget",
+     "storage_m2", "rain_days", "experience_years"].forEach(function (f) {
       var b = M.bounds[f];
       clean[f] = clamp(num(raw[f], M.defaults[f]), b[0], b[1]);
     });
@@ -345,6 +346,89 @@
     return advice.slice(0, 5);
   }
 
+
+  /* ── site factor leverage ────────────────────────────────────────── */
+
+  var SITE_FACTORS = [
+    { key: "storage_ratio", label: "Storage size", poor: 0.30, good: 2.60,
+      note: "covered area against what the job needs" },
+    { key: "rain_days", label: "Rain frequency", poor: 24.0, good: 1.0,
+      note: "wet days across the build window" },
+    { key: "experience_years", label: "Contractor experience", poor: 2.0, good: 35.0,
+      note: "years running work of this type" }
+  ];
+
+  function sensitivity(records, projectRecord, stated) {
+    var base = P.predictOverrun(projectRecord);
+    var factors = SITE_FACTORS.map(function (spec) {
+      var ends = ["poor", "good"].map(function (end) {
+        var moved = records.map(function (row) {
+          var copy = Object.assign({}, row); copy[spec.key] = spec[end]; return copy;
+        });
+        var waste = P.predictWaste(moved).reduce(function (sum, b, i) {
+          return sum + moved[i].line_value_share * b.centre;
+        }, 0);
+        var rec = Object.assign({}, projectRecord);
+        rec[spec.key] = spec[end];
+        rec.expected_waste = waste;
+        return P.predictOverrun(rec);
+      });
+      var poor = ends[0], good = ends[1];
+      var span = spec.good - spec.poor;
+      var position = span ? (stated[spec.key] - spec.poor) / span : 0.5;
+      return {
+        key: spec.key, label: spec.label, note: spec.note,
+        stated: r2(stated[spec.key], 2),
+        swing_pp: r2(Math.abs(poor - good) * 100, 1),
+        recoverable_pp: r2(Math.max(base - good, 0) * 100, 1),
+        at_best_pct: r2(good * 100, 1), at_worst_pct: r2(poor * 100, 1),
+        position: r2(clamp(position, 0, 1) * 100, 1),
+        helps: good < poor
+      };
+    });
+    factors.sort(function (a, b) { return b.swing_pp - a.swing_pp; });
+    return {
+      base_pct: r2(base * 100, 1), factors: factors,
+      recoverable_pp: r2(factors.reduce(function (a, f) { return a + f.recoverable_pp; }, 0), 1),
+      floor_pct: factors.length
+        ? r2(Math.min.apply(null, factors.map(function (f) { return f.at_best_pct; })), 1) : null
+    };
+  }
+
+
+  /* ── the recommendation paragraph ────────────────────────────────── */
+
+  function summarise(project, cost, waste, overrun, buffer, sens, risks) {
+    var money = function (v) { return "$" + Math.round(v).toLocaleString("en-US"); };
+    var text = project.project_name + " is forecast to waste " + waste.pct.toFixed(1) +
+      "% of its materials against a " + waste.benchmark_pct.toFixed(1) +
+      "% trade benchmark, putting the outturn at " + money(cost.expected) +
+      " against a stated budget of " + money(cost.budget) + ".";
+
+    text += buffer.adequate
+      ? " The budget already covers the 90th-percentile outturn, so no further " +
+        "contingency is indicated - the reading is " + overrun.verdict.label.toLowerCase() + "."
+      : " That reads as " + overrun.verdict.label.toLowerCase() + ": a contingency of " +
+        money(buffer.amount) + " (" + buffer.pct_of_budget.toFixed(1) +
+        "% of budget) brings the chance of exceeding the budget back to " +
+        buffer.target_risk + "%.";
+
+    var top = sens.factors[0];
+    text += (top && sens.recoverable_pp >= 3)
+      ? " Of the " + overrun.probability.toFixed(0) + "% overrun risk, roughly " +
+        sens.recoverable_pp.toFixed(0) + " points sit in conditions you control: " +
+        top.label.toLowerCase() + " alone moves it " + top.swing_pp.toFixed(0) +
+        " points between its worst and best case."
+      : " Storage, weather and contractor experience are all close to their best case " +
+        "here, so little of the remaining risk is recoverable from site conditions.";
+
+    if (risks.length) {
+      text += " " + risks[0].name + " carries the most cost variance of any line (" +
+        risks[0].variance_share.toFixed(0) + "%), so it is the one to fix a price on first.";
+    }
+    return text;
+  }
+
   /* ── the analysis ────────────────────────────────────────────────── */
 
   function analyse(raw) {
@@ -368,6 +452,12 @@
     var budgetRatio = budget / Math.max(benchmark, 1);
     var scheduleIntensity = area / Math.max(duration, 1);
 
+    // Storage only means something relative to what a job this size needs.
+    var storageNeed = Math.max(0.02 * area, 12);
+    var storageRatio = project.storage_m2 / storageNeed;
+    var rainDays = project.rain_days;
+    var experienceYears = project.experience_years;
+
     var records = priced.map(function (item) {
       return {
         material: item.material.key, project_type: ptype.key, region: region.key,
@@ -375,7 +465,9 @@
         project_area_log: Math.log1p(area),
         duration_weeks: duration, line_count: lineCount,
         line_value_share: item.gross / totalGross,
-        budget_ratio: budgetRatio, schedule_intensity: scheduleIntensity
+        budget_ratio: budgetRatio, schedule_intensity: scheduleIntensity,
+        storage_ratio: storageRatio, rain_days: rainDays,
+        experience_years: experienceYears
       };
     });
 
@@ -423,7 +515,10 @@
       project_area_log: Math.log1p(area), duration_weeks: duration,
       line_count: lineCount, budget_ratio: budgetRatio,
       budget_per_m2: budget / Math.max(area, 1),
-      schedule_intensity: scheduleIntensity, expected_waste: expectedWaste,
+      schedule_intensity: scheduleIntensity,
+      storage_ratio: storageRatio, rain_days: rainDays,
+      experience_years: experienceYears,
+      expected_waste: expectedWaste,
       mix_concentration: weights.reduce(function (a, w) { return a + w * w; }, 0),
       fragile_share: results.reduce(function (a, r, i) {
         return a + (r.fragility > 0.35 ? weights[i] : 0); }, 0),
@@ -432,18 +527,28 @@
     };
     var classifierRisk = P.predictOverrun(projectRecord);
 
+    var sens = sensitivity(records, projectRecord, {
+      storage_ratio: storageRatio, rain_days: rainDays, experience_years: experienceYears
+    });
     var sim = simulate(priced, centres, M.residual_sigma, region, budget);
     var risks = rankRisk(results, sim.line_sigma);
     var advice = recommendations(results, risks, scheduleIntensity, budgetRatio, sim, ptype);
 
     var out = {
       reference: reference(),
+      summary: summarise(project,
+        { expected: r2(expectedCost, 2), budget: r2(budget, 2) },
+        { pct: r2(expectedWaste * 100, 2),
+          benchmark_pct: r2(wavg(function (r) { return r.benchmark_pct; }), 2) },
+        { verdict: verdict(classifierRisk), probability: r2(classifierRisk * 100, 1) },
+        sim.buffer, sens, risks),
       created_at: new Date().toISOString().replace(/\.\d+Z$/, "+00:00"),
       project: Object.assign({}, project, {
         budget: r2(budget, 2), auto_budget: autoBudget,
         project_type_name: ptype.name, project_type_family: ptype.family,
         region_name: region.name, cost_index: region.cost_index,
-        schedule_intensity: r2(scheduleIntensity, 1)
+        schedule_intensity: r2(scheduleIntensity, 1),
+        storage_need: r2(storageNeed, 1), storage_ratio: r2(storageRatio, 3)
       }),
       waste: {
         pct: r2(expectedWaste * 100, 2),
@@ -467,6 +572,7 @@
         histogram: sim.histogram
       },
       buffer: sim.buffer,
+      sensitivity: sens,
       lines: results,
       risks: risks,
       advice: advice,

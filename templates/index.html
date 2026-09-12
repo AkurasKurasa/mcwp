@@ -53,7 +53,7 @@
 {% endmacro %}
 {% set chosen = (model_backends | selectattr('key', 'equalto', r.model.backend) | list | first) or model_backends[0] %}
 
-  <div class="panel tight reveal mb-16">
+  <div class="panel tight reveal mb-16 allow-overflow">
     <div class="row gap-12 wrap" style="align-items:center">
       <label for="f-backend" style="font-weight:600">Prediction model</label>
 
@@ -95,8 +95,6 @@
         </ul>
       </div>
 
-      <span class="tiny dim">Swaps the learner behind every figure on this page.
-        Compare them with <code>python tools/compare_models.py</code>.</span>
     </div>
   </div>
 
@@ -154,6 +152,37 @@
             <span class="suffix">weeks</span>
           </div>
         </div>
+      </div>
+
+      <div class="grid g2" style="gap:16px; margin-top:16px">
+        <div class="field">
+          <label>On-site storage</label>
+          <div class="input-affix">
+            <input class="input" type="number" name="storage_m2" id="f-storage"
+                   min="0" max="8000" step="5" value="{{ r.project.storage_m2|num(0) }}">
+            <span class="suffix">m&sup2;</span>
+          </div>
+          <div class="hint">Covered, secure area for material awaiting installation.</div>
+        </div>
+        <div class="field">
+          <label>Rain frequency</label>
+          <div class="input-affix">
+            <input class="input" type="number" name="rain_days" id="f-rain"
+                   min="0" max="28" step="1" value="{{ r.project.rain_days|num(0) }}">
+            <span class="suffix">days/month</span>
+          </div>
+          <div class="hint">Wet days expected across the build window.</div>
+        </div>
+      </div>
+
+      <div class="field" style="margin-top:16px">
+        <label>Contractor experience</label>
+        <div class="input-affix">
+          <input class="input" type="number" name="experience_years" id="f-experience"
+                 min="0" max="40" step="1" value="{{ r.project.experience_years|num(0) }}">
+          <span class="suffix">years</span>
+        </div>
+        <div class="hint">Years the main contractor has run work of this type.</div>
       </div>
 
       <hr class="hr">
@@ -418,6 +447,71 @@
 <!-- ══════════════════════════════════════════════════ 5. WHAT TO DO ══════ -->
 
 <!-- ════════════════════════════════════════════════════ 6. MODEL CARD ════ -->
+
+<!-- ═══════════════════════════════════════════════ 4. SITE FACTORS ═══════ -->
+<section id="factors" class="section">
+  <div class="section-title reveal">
+    <h2>What to do</h2>
+    <span class="dim small">How storage, weather and experience move the risk</span>
+  </div>
+
+  <div class="grid g-5-7 mb-24" style="align-items:start">
+
+    <div class="panel lift reveal">
+      <div class="panel-head">
+        <div><h3>Recoverable risk</h3>
+          <div class="sub">Overrun risk sitting in conditions you control</div></div>
+      </div>
+
+      <div class="row gap-16 mb-16" style="align-items:baseline">
+        <div>
+          <div class="cap">Now</div>
+          <div class="val" style="font-size:30px"><span data-out="sens-base">{{ r.sensitivity.base_pct }}</span><span class="unit">%</span></div>
+        </div>
+        <div style="opacity:.5">&rarr;</div>
+        <div>
+          <div class="cap">All three at best</div>
+          <div class="val" style="font-size:30px; color:var(--tone-4)"><span data-out="sens-floor">{{ r.sensitivity.floor_pct }}</span><span class="unit">%</span></div>
+        </div>
+        <span class="badge violet ml-auto"><b data-out="sens-recoverable">{{ r.sensitivity.recoverable_pp }}</b> pts recoverable</span>
+      </div>
+
+      <div class="stack gap-16" id="factor-bars">
+        {% for f in r.sensitivity.factors %}
+        <div class="risk-row">
+          <div class="row gap-8 mb-8">
+            <b class="small">{{ f.label }}</b>
+            <span class="mono tiny dim">{{ f.stated }}{% if f.key == 'rain_days' %} days/mo{% elif f.key == 'experience_years' %} yrs{% else %}&times; need{% endif %}</span>
+            <span class="badge {{ 'rose' if f.recoverable_pp >= 8 else 'amber' if f.recoverable_pp >= 3 else 'mint' }} ml-auto">
+              {{ f.recoverable_pp }} pts</span>
+          </div>
+          <div class="rail"><div class="fill" data-fill="{{ f.position }}"
+               style="width:{{ f.position }}%; background:var(--tone-3)"></div></div>
+          <div class="tiny dim mt-8">{{ f.note }} &middot; swings
+            {{ f.swing_pp }} pts between {{ f.at_worst_pct }}% and {{ f.at_best_pct }}%</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="panel lift reveal">
+      <div class="panel-head">
+        <div><h3>Recommendation</h3><div class="sub">What the numbers say to do</div></div>
+      </div>
+      <p class="lede" style="font-size:15px; margin:0 0 18px" data-out="summary">{{ r.summary }}</p>
+      <hr class="hr">
+      <ol class="stack gap-12" id="advice-list" style="margin:0; padding-left:18px">
+        {% for item in r.advice %}
+        <li>
+          <b class="small">{{ item.title }}</b>
+          <div class="tiny dim mt-8">{{ item.detail }}</div>
+        </li>
+        {% endfor %}
+      </ol>
+    </div>
+
+  </div>
+</section>
 {% endblock %}
 
 {% block scripts %}
@@ -453,7 +547,42 @@ paint();
 document.addEventListener('mcwp:theme', () => setTimeout(paint, 60));
 
 // Live edits redraw the outturn distribution and the risk gauge in place.
+function renderFactors(data) {
+  const set = (name, value) => {
+    const node = document.querySelector(`[data-out="${name}"]`);
+    if (node) node.textContent = value;
+  };
+  const s = data.sensitivity;
+  if (s) {
+    set('sens-base', s.base_pct);
+    set('sens-floor', s.floor_pct);
+    set('sens-recoverable', s.recoverable_pp);
+    const host = document.getElementById('factor-bars');
+    if (host) {
+      host.innerHTML = s.factors.map((f) => {
+        const unit = f.key === 'rain_days' ? ' days/mo'
+                   : f.key === 'experience_years' ? ' yrs' : '× need';
+        const tone = f.recoverable_pp >= 8 ? 'rose' : f.recoverable_pp >= 3 ? 'amber' : 'mint';
+        return `<div class="risk-row">
+          <div class="row gap-8 mb-8"><b class="small">${f.label}</b>
+            <span class="mono tiny dim">${f.stated}${unit}</span>
+            <span class="badge ${tone} ml-auto">${f.recoverable_pp} pts</span></div>
+          <div class="rail"><div class="fill" style="width:${f.position}%;background:var(--tone-3)"></div></div>
+          <div class="tiny dim mt-8">${f.note} &middot; swings ${f.swing_pp} pts
+            between ${f.at_worst_pct}% and ${f.at_best_pct}%</div></div>`;
+      }).join('');
+    }
+  }
+  set('summary', data.summary || '');
+  const list = document.getElementById('advice-list');
+  if (list && data.advice) {
+    list.innerHTML = data.advice.map((a) =>
+      `<li><b class="small">${a.title}</b><div class="tiny dim mt-8">${a.detail}</div></li>`).join('');
+  }
+}
+
 window.repaintOutturn = function (data) {
+  renderFactors(data);
   STATE.hist = data.overrun.histogram;
   STATE.budget = data.cost.budget;
   STATE.p50 = data.overrun.p50;

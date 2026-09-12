@@ -18,7 +18,8 @@ from datetime import datetime, timezone
 import numpy as np
 
 from . import backends, catalog, costing
-from .config import (DISPOSAL_COST_PER_TONNE, MODEL_BACKEND, REWORK_LABOUR_RATIO,
+from .config import (CURRENCY_SYMBOL, DISPOSAL_COST_PER_TONNE, MODEL_BACKEND,
+                     REWORK_LABOUR_RATIO,
                      SALVAGE_RATIO, SIMULATIONS, TARGET_OVERRUN_RISK)
 from .model import get_bundle
 
@@ -31,12 +32,18 @@ DEFAULT_PROJECT = {
     "project_area": 9200.0,
     "duration_weeks": 40.0,
     "budget": 0.0,
+    "storage_m2": 184.0,
+    "rain_days": 8.0,
+    "experience_years": 12.0,
 }
 
 _BOUNDS = {
     "project_area": (50.0, 500_000.0),
     "duration_weeks": (2.0, 260.0),
     "budget": (0.0, 5_000_000_000.0),
+    "storage_m2": (0.0, 8_000.0),
+    "rain_days": (0.0, 28.0),
+    "experience_years": (0.0, 40.0),
 }
 
 
@@ -69,7 +76,8 @@ def normalise(raw: dict) -> dict:
     region = str(raw.get("region") or "").strip()
     clean["region"] = region if region in catalog.REGION_INDEX else DEFAULT_PROJECT["region"]
 
-    for field in ("project_area", "duration_weeks", "budget"):
+    for field in ("project_area", "duration_weeks", "budget",
+                  "storage_m2", "rain_days", "experience_years"):
         low, high = _BOUNDS[field]
         clean[field] = min(max(_number(raw.get(field), DEFAULT_PROJECT[field]), low), high)
 
@@ -127,6 +135,48 @@ def _verdict(probability: float) -> dict:
     return {"label": "Budget looks sound", "tone": "mint", "colour": "var(--tone-4)"}
 
 
+def _ordinal(sensitivity, key) -> str:
+    rank = [f["key"] for f in sensitivity["factors"]].index(key)
+    return ("biggest", "second", "third")[min(rank, 2)] if rank else "biggest"
+
+
+def _summary(project, cost, waste, overrun, buffer_, sensitivity, risks) -> str:
+    """One paragraph a reader can act on without reading the charts."""
+    verdict = overrun["verdict"]["label"].lower()
+    lead = (f"{project['project_name']} is forecast to waste "
+            f"{waste['pct']:.1f}% of its materials against a "
+            f"{waste['benchmark_pct']:.1f}% trade benchmark, putting the outturn at "
+            f"{CURRENCY_SYMBOL}{cost['expected']:,.0f} against a stated budget of "
+            f"{CURRENCY_SYMBOL}{cost['budget']:,.0f}.")
+
+    if buffer_["adequate"]:
+        money = (f" The budget already covers the 90th-percentile outturn, so no further "
+                 f"contingency is indicated - the reading is {verdict}.")
+    else:
+        money = (f" That reads as {verdict}: a contingency of "
+                 f"{CURRENCY_SYMBOL}{buffer_['amount']:,.0f} "
+                 f"({buffer_['pct_of_budget']:.1f}% of budget) brings the chance of "
+                 f"exceeding the budget back to {buffer_['target_risk']}%.")
+
+    top = sensitivity["factors"][0] if sensitivity["factors"] else None
+    if top and sensitivity["recoverable_pp"] >= 3:
+        site = (f" Of the {overrun['probability']:.0f}% overrun risk, roughly "
+                f"{sensitivity['recoverable_pp']:.0f} points sit in conditions you control: "
+                f"{top['label'].lower()} alone moves it {top['swing_pp']:.0f} points between "
+                f"its worst and best case.")
+    else:
+        site = (" Storage, weather and contractor experience are all close to their best "
+                "case here, so little of the remaining risk is recoverable from site "
+                "conditions.")
+
+    worst = risks[0] if risks else None
+    material = (f" {worst['name']} carries the most cost variance of any line "
+                f"({worst['variance_share']:.0f}%), so it is the one to fix a price on first."
+                if worst else "")
+
+    return lead + money + site + material
+
+
 # ---------------------------------------------------------------- the analysis
 
 def analyse(raw: dict) -> dict:
@@ -162,6 +212,12 @@ def analyse(raw: dict) -> dict:
     budget_ratio = budget / max(benchmark_cost, 1.0)
     schedule_intensity = area / max(duration, 1.0)
 
+    # Storage only means something relative to what a job this size needs.
+    storage_need = max(0.02 * area, 12.0)
+    storage_ratio = project["storage_m2"] / storage_need
+    rain_days = project["rain_days"]
+    experience_years = project["experience_years"]
+
     # ---- waste forecast, one row per material line
     records = [{
         "material": item["material"].key,
@@ -174,6 +230,9 @@ def analyse(raw: dict) -> dict:
         "line_value_share": item["gross"] / total_gross,
         "budget_ratio": budget_ratio,
         "schedule_intensity": schedule_intensity,
+        "storage_ratio": storage_ratio,
+        "rain_days": rain_days,
+        "experience_years": experience_years,
     } for item in priced]
 
     band = bundle.predict_waste(records)
@@ -231,6 +290,9 @@ def analyse(raw: dict) -> dict:
         "budget_ratio": budget_ratio,
         "budget_per_m2": budget / max(area, 1.0),
         "schedule_intensity": schedule_intensity,
+        "storage_ratio": storage_ratio,
+        "rain_days": rain_days,
+        "experience_years": experience_years,
         "expected_waste": expected_waste,
         "mix_concentration": float(np.sum(weights ** 2)),
         "fragile_share": float(sum(w for w, r in zip(weights, results) if r["fragility"] > 0.35)),
@@ -240,11 +302,26 @@ def analyse(raw: dict) -> dict:
 
     simulation = _simulate(priced, band["center"], bundle.residual_sigma, region, budget)
     risks = _rank_risk(results, simulation["line_sigma"], expected_cost)
+    sensitivity = _sensitivity(bundle, records, project_record, {
+        "storage_ratio": storage_ratio,
+        "rain_days": rain_days,
+        "experience_years": experience_years,
+    })
     advice = _recommendations(results, risks, schedule_intensity, budget_ratio,
-                              simulation, ptype)
+                              simulation, ptype, sensitivity, project)
+
+    summary = _summary(project, {"expected": round(expected_cost, 2),
+                                 "budget": round(budget, 2)},
+                       {"pct": round(expected_waste * 100, 2),
+                        "benchmark_pct": round(float(np.average(
+                            [r["benchmark_pct"] for r in results], weights=weights)), 2)},
+                       {"verdict": _verdict(classifier_risk),
+                        "probability": round(classifier_risk * 100, 1)},
+                       simulation["buffer"], sensitivity, risks)
 
     return {
         "reference": _reference(),
+        "summary": summary,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "project": {
             **project,
@@ -255,6 +332,8 @@ def analyse(raw: dict) -> dict:
             "region_name": region.name,
             "cost_index": region.cost_index,
             "schedule_intensity": round(schedule_intensity, 1),
+            "storage_need": round(storage_need, 1),
+            "storage_ratio": round(storage_ratio, 3),
         },
         "waste": {
             "pct": round(expected_waste * 100, 2),
@@ -283,10 +362,84 @@ def analyse(raw: dict) -> dict:
             "histogram": simulation["histogram"],
         },
         "buffer": simulation["buffer"],
+        "sensitivity": sensitivity,
         "lines": results,
         "risks": risks,
         "advice": advice,
         "model": bundle.metrics,
+    }
+
+
+# ------------------------------------------------------- site factor leverage
+
+# What a good and a bad version of each stated site condition looks like.
+# Sweeping between them, with everything else held still, is the only honest
+# way to say how much a factor is actually moving the risk - a feature
+# importance cannot, because `material` and `budget_ratio` crowd it out.
+_SITE_FACTORS = (
+    {"key": "storage_ratio", "label": "Storage size", "unit": "m²",
+     "poor": 0.30, "good": 2.60, "note": "covered area against what the job needs"},
+    {"key": "rain_days", "label": "Rain frequency", "unit": "days/month",
+     "poor": 24.0, "good": 1.0, "note": "wet days across the build window"},
+    {"key": "experience_years", "label": "Contractor experience", "unit": "years",
+     "poor": 2.0, "good": 35.0, "note": "years running work of this type"},
+)
+
+
+def _sensitivity(bundle, records, project_record, stated) -> dict:
+    """How much of the overrun risk each stated site condition is carrying.
+
+    For every factor: the risk with it set poor, and set good, with the rest
+    of the brief untouched. The gap is that factor's leverage; the distance
+    from where it stands now to its good end is the risk it is still holding.
+
+    Every variant is predicted in one batch - six separate calls cost roughly
+    six times as much, because sklearn's per-call overhead dominates at this
+    size, not the trees.
+    """
+    ends = [(spec, end, spec[end]) for spec in _SITE_FACTORS for end in ("poor", "good")]
+
+    # one waste pass over every variant of every line
+    batched, spans = [], []
+    for spec, _end, value in ends:
+        spans.append((len(batched), len(records)))
+        batched.extend(dict(row, **{spec["key"]: value}) for row in records)
+    centres = bundle.predict_center(batched)
+
+    # one classifier pass over the project as it would then stand
+    variants = []
+    for (spec, _end, value), (start, width) in zip(ends, spans):
+        waste = sum(batched[start + i]["line_value_share"] * float(centres[start + i])
+                    for i in range(width))
+        variants.append(dict(project_record, **{spec["key"]: value,
+                                                "expected_waste": waste}))
+    probs = bundle.predict_overrun_many([project_record] + variants)
+    base, rest = float(probs[0]), probs[1:]
+
+    factors = []
+    for index, spec in enumerate(_SITE_FACTORS):
+        poor, good = float(rest[index * 2]), float(rest[index * 2 + 1])
+        span = spec["good"] - spec["poor"]
+        position = (stated[spec["key"]] - spec["poor"]) / span if span else 0.5
+        factors.append({
+            "key": spec["key"],
+            "label": spec["label"],
+            "note": spec["note"],
+            "stated": round(float(stated[spec["key"]]), 2),
+            "swing_pp": round(abs(poor - good) * 100, 1),
+            "recoverable_pp": round(max(base - good, 0.0) * 100, 1),
+            "at_best_pct": round(good * 100, 1),
+            "at_worst_pct": round(poor * 100, 1),
+            "position": round(min(max(position, 0.0), 1.0) * 100, 1),
+            "helps": good < poor,
+        })
+
+    factors.sort(key=lambda f: f["swing_pp"], reverse=True)
+    return {
+        "base_pct": round(base * 100, 1),
+        "factors": factors,
+        "recoverable_pp": round(sum(f["recoverable_pp"] for f in factors), 1),
+        "floor_pct": round(min(f["at_best_pct"] for f in factors), 1) if factors else None,
     }
 
 
@@ -417,7 +570,7 @@ def _rank_risk(lines, line_sigma, expected_cost) -> list:
 
 
 def _recommendations(lines, risks, schedule_intensity, budget_ratio,
-                     simulation, ptype) -> list:
+                     simulation, ptype, sensitivity=None, project=None) -> list:
     """Concrete, ordered actions tied to what the numbers actually say."""
     advice = []
     buffer = simulation["buffer"]
@@ -478,6 +631,40 @@ def _recommendations(lines, risks, schedule_intensity, budget_ratio,
             "tone": "amber",
         })
 
+    if sensitivity:
+        for factor in sensitivity["factors"]:
+            if factor["recoverable_pp"] < 3.0:
+                continue
+            key = factor["key"]
+            if key == "storage_ratio":
+                need = (project or {}).get("storage_m2", 0)
+                advice.append({
+                    "title": "Put more material under cover",
+                    "detail": (f"Storage is the {_ordinal(sensitivity, key)} biggest lever here. "
+                               f"At {need:,.0f} m² the site is holding "
+                               f"{factor['recoverable_pp']:.0f} points of overrun risk that "
+                               f"adequate covered storage would take back."),
+                    "tone": "cyan",
+                })
+            elif key == "rain_days":
+                advice.append({
+                    "title": "Programme the wet-sensitive work away from the rain",
+                    "detail": (f"At {factor['stated']:.0f} wet days a month, weather is carrying "
+                               f"{factor['recoverable_pp']:.0f} points of the overrun risk. "
+                               "Sequence boards, insulation and finishes behind a watertight "
+                               "envelope, and the forecast falls."),
+                    "tone": "amber",
+                })
+            elif key == "experience_years":
+                advice.append({
+                    "title": "Back a green contractor with supervision",
+                    "detail": (f"{factor['stated']:.0f} years on work of this type is light. "
+                               f"That accounts for {factor['recoverable_pp']:.0f} points of "
+                               "overrun risk - closable with a stronger site manager and "
+                               "tighter takeoff review rather than a different price."),
+                    "tone": "rose",
+                })
+
     if schedule_intensity > max(ptype.typical_area / 30, 40):
         advice.append({
             "title": "The programme is compressed for a job this size",
@@ -487,4 +674,4 @@ def _recommendations(lines, risks, schedule_intensity, budget_ratio,
             "tone": "rose",
         })
 
-    return advice[:5]
+    return advice[:6]
