@@ -17,9 +17,9 @@ from flask import Flask, jsonify, render_template, request
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
-from mcwp import catalog, engine, samples
+from mcwp import backends, catalog, engine, samples
 from mcwp.bootstrap import ensure_ready
-from mcwp.config import CURRENCY, CURRENCY_SYMBOL, SIMULATIONS
+from mcwp.config import CURRENCY, CURRENCY_SYMBOL, INSTANCE, SIMULATIONS
 from mcwp.model import get_bundle
 
 app = Flask(__name__)
@@ -28,6 +28,29 @@ app.jinja_env.trim_blocks = True
 app.jinja_env.lstrip_blocks = True
 
 METRICS = ensure_ready()
+
+
+def backend_options() -> list:
+    """Every backend, with its measured scores where they have been recorded."""
+    measured = {}
+    report = INSTANCE / "model_comparison.json"
+    if report.exists():
+        try:
+            for row in json.loads(report.read_text(encoding="utf-8"))["rows"]:
+                measured[row["key"]] = row
+        except (ValueError, KeyError):
+            pass
+
+    options = []
+    for item in backends.available():
+        row = measured.get(item["key"])
+        if row:
+            item["r2"] = round(row["waste"]["r2"], 3)
+            item["auc"] = round(row["overrun"]["auc"], 3)
+            item["mae_pp"] = round(row["waste"]["mae_pp"], 2)
+            item["coverage_80"] = round(row["waste"]["coverage_80"], 1)
+        options.append(item)
+    return options
 
 
 # --------------------------------------------------------------- jinja filters
@@ -94,6 +117,7 @@ def inject_globals():
         "catalog": catalog,
         "metrics": METRICS,
         "simulations": SIMULATIONS,
+        "model_backends": backend_options(),
         "year": datetime.now(timezone.utc).year,
     }
 
@@ -148,6 +172,11 @@ def api_sample():
 @app.get("/api/materials")
 def api_materials():
     return jsonify([m.as_dict() for m in catalog.MATERIALS])
+
+
+@app.get("/api/backends")
+def api_backends():
+    return jsonify(backend_options())
 
 
 @app.get("/api/health")

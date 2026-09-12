@@ -17,9 +17,9 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-from . import catalog, costing
-from .config import (DISPOSAL_COST_PER_TONNE, REWORK_LABOUR_RATIO, SALVAGE_RATIO,
-                     SIMULATIONS, TARGET_OVERRUN_RISK)
+from . import backends, catalog, costing
+from .config import (DISPOSAL_COST_PER_TONNE, MODEL_BACKEND, REWORK_LABOUR_RATIO,
+                     SALVAGE_RATIO, SIMULATIONS, TARGET_OVERRUN_RISK)
 from .model import get_bundle
 
 MAX_LINES = 10
@@ -75,6 +75,10 @@ def normalise(raw: dict) -> dict:
 
     clean["project_name"] = str(raw.get("project_name", "")).strip()[:120] or "Untitled Project"
 
+    choice = str(raw.get("backend") or "").strip()
+    spec = backends.BACKENDS.get(choice)
+    clean["backend"] = choice if spec is not None and spec.available else MODEL_BACKEND
+
     # Materials list: accept a list of dicts, or parallel arrays from a form post.
     lines = raw.get("lines")
     if not isinstance(lines, list):
@@ -127,7 +131,7 @@ def _verdict(probability: float) -> dict:
 
 def analyse(raw: dict) -> dict:
     project = normalise(raw)
-    bundle = get_bundle()
+    bundle = get_bundle(project["backend"])
     ptype = catalog.PROJECT_TYPE_INDEX[project["project_type"]]
     region = catalog.REGION_INDEX[project["region"]]
 

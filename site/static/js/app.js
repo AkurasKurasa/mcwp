@@ -266,6 +266,7 @@
       project_area: form.elements.project_area.value,
       duration_weeks: form.elements.duration_weeks.value,
       budget: form.elements.budget.value,
+      backend: form.elements.backend ? form.elements.backend.value : "",
       lines: $$(".line-row", linesHost).map((row) => ({
         material: $("select", row).value,
         quantity: $("input", row).value,

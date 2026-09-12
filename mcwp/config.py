@@ -1,12 +1,31 @@
 """Application-wide paths and tunable constants."""
 
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 INSTANCE = ROOT / "instance"
 DB_PATH = INSTANCE / "mcwp.db"
-MODEL_PATH = INSTANCE / "models.joblib"
-METRICS_PATH = INSTANCE / "model_metrics.json"
+
+# Which learner backs the predictions. See mcwp/backends.py for the choices;
+# MCWP_BACKEND overrides it without touching code.
+MODEL_BACKEND = os.environ.get("MCWP_BACKEND", "random_forest")
+
+# The browser build in site/ can only evaluate this one, so it stays pinned
+# regardless of what the app itself is running.
+EXPORT_BACKEND = "hist_gradient_boosting"
+
+
+def model_path(backend: str) -> Path:
+    return INSTANCE / f"models_{backend}.joblib"
+
+
+def metrics_path(backend: str) -> Path:
+    return INSTANCE / f"model_metrics_{backend}.json"
+
+
+MODEL_PATH = model_path(MODEL_BACKEND)
+METRICS_PATH = metrics_path(MODEL_BACKEND)
 
 CORPUS_PROJECTS = 2600          # whole projects; each carries 3-8 material lines
 RANDOM_SEED = 20260819

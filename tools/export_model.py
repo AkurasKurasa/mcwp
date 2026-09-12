@@ -24,7 +24,8 @@ sys.path.insert(0, str(ROOT))
 import numpy as np  # noqa: E402
 
 from mcwp import catalog, engine, samples  # noqa: E402
-from mcwp.config import (DISPOSAL_COST_PER_TONNE, REWORK_LABOUR_RATIO,  # noqa: E402
+from mcwp.config import (DISPOSAL_COST_PER_TONNE, EXPORT_BACKEND,  # noqa: E402
+                         REWORK_LABOUR_RATIO,
                          SALVAGE_RATIO, SIMULATIONS, TARGET_OVERRUN_RISK)
 from mcwp.datagen import PALETTES  # noqa: E402
 from mcwp.model import get_bundle  # noqa: E402
@@ -74,11 +75,21 @@ def encoder_levels(est, feature_names) -> dict:
 
 
 def main() -> None:
-    bundle = get_bundle()
+    bundle = get_bundle(EXPORT_BACKEND)
+
+    if bundle.backend != EXPORT_BACKEND:
+        raise SystemExit(
+            f"the browser build can only evaluate {EXPORT_BACKEND!r}, but the "
+            f"loaded bundle is {bundle.backend!r}. Re-run with "
+            f"MCWP_BACKEND={EXPORT_BACKEND}.")
 
     payload = {
-        "models": {name: dump_model(getattr(bundle, name))
-                   for name in ("center", "lower", "upper", "overrun")},
+        "models": {
+            "center": dump_model(bundle.waste.center),
+            "lower": dump_model(bundle.waste.lower),
+            "upper": dump_model(bundle.waste.upper),
+            "overrun": dump_model(bundle.overrun),
+        },
         "features": {
             "line": catalog.LINE_FEATURES,
             "line_cat": catalog.LINE_CATEGORICALS,
@@ -87,7 +98,7 @@ def main() -> None:
         },
         "levels": catalog.CATEGORY_LEVELS,
         "encoders": {
-            "line": encoder_levels(bundle.center, catalog.LINE_FEATURES),
+            "line": encoder_levels(bundle.waste.center, catalog.LINE_FEATURES),
             "project": encoder_levels(bundle.overrun, catalog.PROJECT_FEATURES),
         },
         "calibration": bundle.calibration,
